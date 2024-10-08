@@ -64,25 +64,7 @@ class MailchimpScheduler {
 			return false;
 		}
 
-		$country_code = WC()->countries->get_base_country();
-		$country_name = WC()->countries->countries[ $country_code ] ?? 'N/A';
-
-		$state      = WC()->countries->get_base_state();
-		$state_name = WC()->countries->states[ $country_code ][ $state ] ?? 'N/A';
-
-		$address = array(
-			// Setting N/A for addr1, city, state, zipcode and country as they are
-			// required fields. Setting '' doesn't work.
-			'addr1'   => 'N/A',
-			'addr2'   => '',
-			'city'    => 'N/A',
-			'state'   => $state_name,
-			'zip'     => 'N/A',
-			'country' => $country_name,
-		);
-
-		$response = $this->make_request( $profile_data['store_email'], $address );
-
+		$response = $this->make_request( $profile_data['store_email'] );
 		if ( is_wp_error( $response ) || ! isset( $response['body'] ) ) {
 			$this->handle_request_error();
 			return false;
@@ -103,11 +85,10 @@ class MailchimpScheduler {
 	 *
 	 * @internal
 	 * @param string $store_email Email address to subscribe.
-	 * @param array  $address     Store address.
 	 *
 	 * @return mixed
 	 */
-	public function make_request( $store_email, $address ) {
+	public function make_request( $store_email ) {
 		if ( true === defined( 'WP_ENVIRONMENT_TYPE' ) && 'development' === constant( 'WP_ENVIRONMENT_TYPE' ) ) {
 			$subscribe_endpoint = self::SUBSCRIBE_ENDPOINT_DEV;
 		} else {
@@ -120,8 +101,7 @@ class MailchimpScheduler {
 				'user-agent' => 'WooCommerce/' . WC()->version . '; ' . get_bloginfo( 'url' ),
 				'method'     => 'POST',
 				'body'       => array(
-					'email'   => $store_email,
-					'address' => $address,
+					'email' => $store_email,
 				),
 			)
 		);

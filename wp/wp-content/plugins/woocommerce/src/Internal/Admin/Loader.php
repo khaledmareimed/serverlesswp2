@@ -8,6 +8,7 @@ namespace Automattic\WooCommerce\Internal\Admin;
 use Automattic\WooCommerce\Admin\Features\Features;
 use Automattic\WooCommerce\Admin\PageController;
 use Automattic\WooCommerce\Admin\PluginsHelper;
+use Automattic\WooCommerce\Internal\Admin\BlockTemplateRegistry\BlockTemplatesController;
 use Automattic\WooCommerce\Internal\Admin\ProductReviews\Reviews;
 use Automattic\WooCommerce\Internal\Admin\ProductReviews\ReviewsCommentsOverrides;
 use Automattic\WooCommerce\Internal\Admin\Settings;
@@ -72,6 +73,7 @@ class Loader {
 
 		wc_get_container()->get( Reviews::class );
 		wc_get_container()->get( ReviewsCommentsOverrides::class );
+		wc_get_container()->get( BlockTemplatesController::class );
 
 		add_filter( 'admin_body_class', array( __CLASS__, 'add_admin_body_classes' ) );
 		add_filter( 'admin_title', array( __CLASS__, 'update_admin_title' ) );
@@ -90,7 +92,32 @@ class Loader {
 		*/
 		remove_action( 'admin_print_scripts', 'print_emoji_detection_script' );
 
-		add_action( 'load-themes.php', array( __CLASS__, 'add_appearance_theme_view_tracks_event' ) );
+		add_action( 'admin_init', array( __CLASS__, 'deactivate_wc_admin_plugin' ) );
+	}
+
+	/**
+	 * If WooCommerce Admin is installed and activated, it will attempt to deactivate and show a notice.
+	 */
+	public static function deactivate_wc_admin_plugin() {
+		$plugin_path = PluginsHelper::get_plugin_path_from_slug( 'woocommerce-admin' );
+		if ( is_plugin_active( $plugin_path ) ) {
+			$path = PluginsHelper::get_plugin_path_from_slug( 'woocommerce-admin' );
+			deactivate_plugins( $path );
+			$notice_action = is_network_admin() ? 'network_admin_notices' : 'admin_notices';
+			add_action(
+				$notice_action,
+				function() {
+					echo '<div class="error"><p>';
+					printf(
+						/* translators: %s: is referring to the plugin's name. */
+						esc_html__( 'The %1$s plugin has been deactivated as the latest improvements are now included with the %2$s plugin.', 'woocommerce' ),
+						'<code>WooCommerce Admin</code>',
+						'<code>WooCommerce</code>'
+					);
+					echo '</p></div>';
+				}
+			);
+		}
 	}
 
 	/**
@@ -124,25 +151,12 @@ class Loader {
 
 		$sections = self::get_embed_breadcrumbs();
 		$sections = is_array( $sections ) ? $sections : array( $sections );
-
-		$page_title      = '';
-		$pages_with_tabs = array( 'Settings', 'Reports', 'Status' );
-
-		if (
-			count( $sections ) > 2 &&
-			is_array( $sections[1] ) &&
-			in_array( $sections[1][1], $pages_with_tabs, true )
-		) {
-			$page_title = $sections[1][1];
-		} else {
-			$page_title = end( $sections );
-		}
 		?>
 		<div id="woocommerce-embedded-root" class="is-embed-loading">
 			<div class="woocommerce-layout">
 				<div class="woocommerce-layout__header is-embed-loading">
 					<h1 class="woocommerce-layout__header-heading">
-						<?php self::output_heading( $page_title ); ?>
+						<?php self::output_heading( end( $sections ) ); ?>
 					</h1>
 				</div>
 			</div>
@@ -161,7 +175,7 @@ class Loader {
 		}
 
 		$classes   = explode( ' ', trim( $admin_body_class ) );
-		$classes[] = 'woocommerce-admin-page';
+		$classes[] = 'woocommerce-page';
 		if ( PageController::is_embed_page() ) {
 			$classes[] = 'woocommerce-embed-page';
 		}
@@ -173,7 +187,6 @@ class Loader {
 		 * This class needs to be removed by those feature components (like <ProfileWizard />).
 		 *
 		 * @param bool $is_loading If WooCommerce Admin is loading a fullscreen view.
-		 * @since 6.5.0
 		 */
 		$is_loading = apply_filters( 'woocommerce_admin_is_loading', false );
 
@@ -190,16 +203,7 @@ class Loader {
 	 * See https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/PromotingAppswithAppBanners/PromotingAppswithAppBanners.html
 	 */
 	public static function smart_app_banner() {
-		$exclude_paths = array(
-			'/customize-store',
-			'/setup-wizard',
-			'/launch-your-store',
-		);
-
-		/* phpcs:ignore */
-		$path = $_GET['path'] ?? '';
-
-		if ( PageController::is_admin_or_embed_page() && ! in_array( $path, $exclude_paths, true ) ) {
+		if ( PageController::is_admin_or_embed_page() ) {
 			echo "
 				<meta name='apple-itunes-app' content='app-id=1389130815'>
 			";
@@ -316,7 +320,7 @@ class Loader {
 			$settings['orderStatuses'] = self::get_order_statuses( wc_get_order_statuses() );
 			$settings['stockStatuses'] = self::get_order_statuses( wc_get_product_stock_status_options() );
 			$settings['currency']      = self::get_currency_settings();
-			$settings['locale']        = array(
+			$settings['locale']        = [
 				'siteLocale'    => isset( $settings['siteLocale'] )
 					? $settings['siteLocale']
 					: get_locale(),
@@ -326,17 +330,13 @@ class Loader {
 				'weekdaysShort' => isset( $settings['l10n']['weekdaysShort'] )
 					? $settings['l10n']['weekdaysShort']
 					: array_values( $wp_locale->weekday_abbrev ),
-			);
+			];
 		}
 
-		/**
-		 * The woocommerce_component_settings_preload_endpoints filter
-		 *
-		 * @since 6.5.0
-		 */
 		$preload_data_endpoints = apply_filters( 'woocommerce_component_settings_preload_endpoints', array() );
-
-		$preload_data_endpoints['jetpackStatus'] = '/jetpack/v4/connection';
+		if ( class_exists( 'Jetpack' ) ) {
+			$preload_data_endpoints['jetpackStatus'] = '/jetpack/v4/connection';
+		}
 		if ( ! empty( $preload_data_endpoints ) ) {
 			$preload_data = array_reduce(
 				array_values( $preload_data_endpoints ),
@@ -344,11 +344,6 @@ class Loader {
 			);
 		}
 
-		/**
-		 * The woocommerce_admin_preload_options filter
-		 *
-		 * @since 6.5.0
-		 */
 		$preload_options = apply_filters( 'woocommerce_admin_preload_options', array() );
 		if ( ! empty( $preload_options ) ) {
 			foreach ( $preload_options as $option ) {
@@ -356,17 +351,12 @@ class Loader {
 			}
 		}
 
-		/**
-		 * The woocommerce_admin_preload_settings filter
-		 *
-		 * @since 6.5.0
-		 */
 		$preload_settings = apply_filters( 'woocommerce_admin_preload_settings', array() );
 		if ( ! empty( $preload_settings ) ) {
 			$setting_options = new \WC_REST_Setting_Options_V2_Controller();
 			foreach ( $preload_settings as $group ) {
 				$group_settings   = $setting_options->get_group_settings( $group );
-				$preload_settings = array();
+				$preload_settings = [];
 				foreach ( $group_settings as $option ) {
 					if ( array_key_exists( 'id', $option ) && array_key_exists( 'value', $option ) ) {
 						$preload_settings[ $option['id'] ] = $option['value'];
@@ -408,13 +398,12 @@ class Loader {
 		// E.g An extension that added statuses is now inactive or removed.
 		$settings['unregisteredOrderStatuses'] = self::get_unregistered_order_statuses();
 		// The separator used for attributes found in Variation titles.
-		/* phpcs:ignore */
 		$settings['variationTitleAttributesSeparator'] = apply_filters( 'woocommerce_product_variation_title_attributes_separator', ' - ', new \WC_Product() );
 
 		if ( ! empty( $preload_data_endpoints ) ) {
 			$settings['dataEndpoints'] = isset( $settings['dataEndpoints'] )
 				? $settings['dataEndpoints']
-				: array();
+				: [];
 			foreach ( $preload_data_endpoints as $key => $endpoint ) {
 				// Handle error case: rest_do_request() doesn't guarantee success.
 				if ( empty( $preload_data[ $endpoint ] ) ) {
@@ -554,11 +543,6 @@ class Loader {
 	public static function get_currency_settings() {
 		$code = get_woocommerce_currency();
 
-		/**
-		 * The wc_currency_settings hook
-		 *
-		 * @since 6.5.0
-		 */
 		return apply_filters(
 			'wc_currency_settings',
 			array(
@@ -586,12 +570,5 @@ class Loader {
 		if ( $homepage_id === $post_id ) {
 			delete_option( 'woocommerce_onboarding_homepage_post_id' );
 		}
-	}
-
-	/**
-	 * Adds the appearance_theme_view Tracks event.
-	 */
-	public static function add_appearance_theme_view_tracks_event() {
-		wc_admin_record_tracks_event( 'appearance_theme_view', array() );
 	}
 }

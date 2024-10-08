@@ -6,23 +6,24 @@
 namespace Automattic\WooCommerce\Internal\Admin;
 
 /**
- * Determines whether the Shipping Label Banner should be displayed
+ * Determines whether or not the Shipping Label Banner should be displayed
  */
 class ShippingLabelBannerDisplayRules {
 
 	/**
-	 * Whether the site is connected to wordpress.com.
+	 * Holds the installed Jetpack version.
 	 *
-	 * @var bool
+	 * @var string
 	 */
-	private $dotcom_connected;
+	private $jetpack_version;
+
 
 	/**
-	 * Whether installed plugins are incompatible with the banner.
+	 * Whether or not the installed Jetpack is connected.
 	 *
 	 * @var bool
 	 */
-	private $no_incompatible_plugins_installed;
+	private $jetpack_connected;
 
 	/**
 	 * Holds the installed WooCommerce Shipping & Tax version.
@@ -30,6 +31,34 @@ class ShippingLabelBannerDisplayRules {
 	 * @var string
 	 */
 	private $wcs_version;
+
+	/**
+	 * Whether or not there're plugins installed incompatible with the banner.
+	 *
+	 * @var bool
+	 */
+	private $no_incompatible_plugins_installed;
+
+	/**
+	 * Whether or not the WooCommerce Shipping & Tax ToS has been accepted.
+	 *
+	 * @var bool
+	 */
+	private $wcs_tos_accepted;
+
+	/**
+	 * Minimum supported Jetpack version.
+	 *
+	 * @var string
+	 */
+	private $min_jetpack_version = '4.4';
+
+	/**
+	 * Minimum supported WooCommerce Shipping & Tax version.
+	 *
+	 * @var string
+	 */
+	private $min_wcs_version = '1.22.5';
 
 	/**
 	 * Supported countries by USPS, see: https://webpmt.usps.gov/pmt010.cfm
@@ -49,13 +78,17 @@ class ShippingLabelBannerDisplayRules {
 	/**
 	 * Constructor.
 	 *
-	 * @param bool        $dotcom_connected Is site connected to wordpress.com?.
-	 * @param string|null $wcs_version Installed WooCommerce Shipping version to check, null if not installed.
-	 * @param bool        $incompatible_plugins_installed Are there any incompatible plugins installed?.
+	 * @param string $jetpack_version Installed Jetpack version to check.
+	 * @param bool   $jetpack_connected Is Jetpack connected?.
+	 * @param string $wcs_version Installed WooCommerce Shipping & Tax version to check.
+	 * @param bool   $wcs_tos_accepted WooCommerce Shipping & Tax Terms of Service accepted?.
+	 * @param bool   $incompatible_plugins_installed Are there any incompatible plugins installed?.
 	 */
-	public function __construct( $dotcom_connected, $wcs_version, $incompatible_plugins_installed ) {
-		$this->dotcom_connected                  = $dotcom_connected;
+	public function __construct( $jetpack_version, $jetpack_connected, $wcs_version, $wcs_tos_accepted, $incompatible_plugins_installed ) {
+		$this->jetpack_version                   = $jetpack_version;
+		$this->jetpack_connected                 = $jetpack_connected;
 		$this->wcs_version                       = $wcs_version;
+		$this->wcs_tos_accepted                  = $wcs_tos_accepted;
 		$this->no_incompatible_plugins_installed = ! $incompatible_plugins_installed;
 	}
 
@@ -64,11 +97,15 @@ class ShippingLabelBannerDisplayRules {
 	 */
 	public function should_display_banner() {
 		return $this->banner_not_dismissed() &&
-			$this->dotcom_connected &&
+			$this->jetpack_installed_and_active() &&
+			$this->jetpack_up_to_date() &&
+			$this->jetpack_connected &&
 			$this->no_incompatible_plugins_installed &&
 			$this->order_has_shippable_products() &&
 			$this->store_in_us_and_usd() &&
-			$this->wcs_not_installed();
+			( $this->wcs_not_installed() || (
+				$this->wcs_up_to_date() && ! $this->wcs_tos_accepted
+			) );
 	}
 
 	/**
@@ -93,12 +130,35 @@ class ShippingLabelBannerDisplayRules {
 	}
 
 	/**
+	 * Checks if jetpack is installed and active.
+	 *
+	 * @return bool
+	 */
+	private function jetpack_installed_and_active() {
+		return ! ! $this->jetpack_version;
+	}
+
+	/**
+	 * Checks if Jetpack version is supported.
+	 *
+	 * @return bool
+	 */
+	private function jetpack_up_to_date() {
+		return version_compare( $this->jetpack_version, $this->min_jetpack_version, '>=' );
+	}
+
+	/**
 	 * Checks if there's a shippable product in the current order.
 	 *
 	 * @return bool
 	 */
 	private function order_has_shippable_products() {
-		$order = wc_get_order();
+		$post = get_post();
+		if ( ! $post ) {
+			return false;
+		}
+
+		$order = wc_get_order( get_post()->ID );
 
 		if ( ! $order ) {
 			return false;
@@ -136,5 +196,12 @@ class ShippingLabelBannerDisplayRules {
 	 */
 	private function wcs_not_installed() {
 		return ! $this->wcs_version;
+	}
+
+	/**
+	 * Checks if WooCommerce Shipping & Tax is up to date.
+	 */
+	private function wcs_up_to_date() {
+		return $this->wcs_version && version_compare( $this->wcs_version, $this->min_wcs_version, '>=' );
 	}
 }

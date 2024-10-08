@@ -9,20 +9,16 @@ namespace Automattic\WooCommerce\Admin\API\Reports\Downloads;
 
 defined( 'ABSPATH' ) || exit;
 
+use Automattic\WooCommerce\Admin\API\Reports\Controller as ReportsController;
 use Automattic\WooCommerce\Admin\API\Reports\ExportableInterface;
-use Automattic\WooCommerce\Admin\API\Reports\GenericController;
-use Automattic\WooCommerce\Admin\API\Reports\GenericQuery;
-use Automattic\WooCommerce\Admin\API\Reports\OrderAwareControllerTrait;
 
 /**
  * REST API Reports downloads controller class.
  *
  * @internal
- * @extends Automattic\WooCommerce\Admin\API\Reports\GenericController
+ * @extends Automattic\WooCommerce\Admin\API\Reports\Controller
  */
-class Controller extends GenericController implements ExportableInterface {
-
-	use OrderAwareControllerTrait;
+class Controller extends ReportsController implements ExportableInterface {
 
 	/**
 	 * Route base.
@@ -32,40 +28,67 @@ class Controller extends GenericController implements ExportableInterface {
 	protected $rest_base = 'reports/downloads';
 
 	/**
-	 * Get data from `'downloads'` Query.
+	 * Get items.
 	 *
-	 * @override GenericController::get_datastore_data()
-	 *
-	 * @param array $query_args Query arguments.
-	 * @return mixed Results from the data store.
+	 * @param WP_REST_Request $request Request data.
+	 * @return array|WP_Error
 	 */
-	protected function get_datastore_data( $query_args = array() ) {
-		$query = new GenericQuery( $query_args, 'downloads' );
-		return $query->get_data();
+	public function get_items( $request ) {
+		$args       = array();
+		$registered = array_keys( $this->get_collection_params() );
+		foreach ( $registered as $param_name ) {
+			if ( isset( $request[ $param_name ] ) ) {
+				$args[ $param_name ] = $request[ $param_name ];
+			}
+		}
+
+		$reports        = new Query( $args );
+		$downloads_data = $reports->get_data();
+
+		$data = array();
+
+		foreach ( $downloads_data->data as $download_data ) {
+			$item   = $this->prepare_item_for_response( $download_data, $request );
+			$data[] = $this->prepare_response_for_collection( $item );
+		}
+
+		return $this->add_pagination_headers(
+			$request,
+			$data,
+			(int) $downloads_data->total,
+			(int) $downloads_data->page_no,
+			(int) $downloads_data->pages
+		);
 	}
 
 	/**
-	 * Prepare a report data item for serialization.
+	 * Prepare a report object for serialization.
 	 *
-	 * @param Array           $report  Report data item as returned from Data Store.
+	 * @param Array           $report  Report data.
 	 * @param WP_REST_Request $request Request object.
 	 * @return WP_REST_Response
 	 */
 	public function prepare_item_for_response( $report, $request ) {
+		$data = $report;
+
+		$context = ! empty( $request['context'] ) ? $request['context'] : 'view';
+		$data    = $this->add_additional_fields_to_object( $data, $request );
+		$data    = $this->filter_response_by_context( $data, $context );
+
 		// Wrap the data in a response object.
-		$response = parent::prepare_item_for_response( $report, $request );
+		$response = rest_ensure_response( $data );
 		$response->add_links( $this->prepare_links( $report ) );
 
-		$response->data['date'] = get_date_from_gmt( $report['date_gmt'], 'Y-m-d H:i:s' );
+		$response->data['date'] = get_date_from_gmt( $data['date_gmt'], 'Y-m-d H:i:s' );
 
 		// Figure out file name.
 		// Matches https://github.com/woocommerce/woocommerce/blob/4be0018c092e617c5d2b8c46b800eb71ece9ddef/includes/class-wc-download-handler.php#L197.
-		$product_id = intval( $report['product_id'] );
+		$product_id = intval( $data['product_id'] );
 		$_product   = wc_get_product( $product_id );
 
 		// Make sure the product hasn't been deleted.
 		if ( $_product ) {
-			$file_path                   = $_product->get_file_download_path( $report['download_id'] );
+			$file_path                   = $_product->get_file_download_path( $data['download_id'] );
 			$filename                    = basename( $file_path );
 			$response->data['file_name'] = apply_filters( 'woocommerce_file_download_filename', $filename, $product_id );
 			$response->data['file_path'] = $file_path;
@@ -74,9 +97,9 @@ class Controller extends GenericController implements ExportableInterface {
 			$response->data['file_path'] = '';
 		}
 
-		$customer                       = new \WC_Customer( $report['user_id'] );
+		$customer                       = new \WC_Customer( $data['user_id'] );
 		$response->data['username']     = $customer->get_username();
-		$response->data['order_number'] = $this->get_order_number( $report['order_id'] );
+		$response->data['order_number'] = $this->get_order_number( $data['order_id'] );
 
 		/**
 		 * Filter a report returned from the API.
@@ -107,22 +130,6 @@ class Controller extends GenericController implements ExportableInterface {
 		return $links;
 	}
 
-	/**
-	 * Maps query arguments from the REST request.
-	 *
-	 * @param array $request Request array.
-	 * @return array
-	 */
-	protected function prepare_reports_query( $request ) {
-		$args       = array();
-		$registered = array_keys( $this->get_collection_params() );
-		foreach ( $registered as $param_name ) {
-			if ( isset( $request[ $param_name ] ) ) {
-				$args[ $param_name ] = $request[ $param_name ];
-			}
-		}
-		return $args;
-	}
 	/**
 	 * Get the Report's schema, conforming to JSON Schema.
 	 *
@@ -218,10 +225,53 @@ class Controller extends GenericController implements ExportableInterface {
 	 * @return array
 	 */
 	public function get_collection_params() {
-		$params                        = parent::get_collection_params();
-		$params['orderby']['enum']     = array(
-			'date',
-			'product',
+		$params                        = array();
+		$params['context']             = $this->get_context_param( array( 'default' => 'view' ) );
+		$params['page']                = array(
+			'description'       => __( 'Current page of the collection.', 'woocommerce' ),
+			'type'              => 'integer',
+			'default'           => 1,
+			'sanitize_callback' => 'absint',
+			'validate_callback' => 'rest_validate_request_arg',
+			'minimum'           => 1,
+		);
+		$params['per_page']            = array(
+			'description'       => __( 'Maximum number of items to be returned in result set.', 'woocommerce' ),
+			'type'              => 'integer',
+			'default'           => 10,
+			'minimum'           => 1,
+			'maximum'           => 100,
+			'sanitize_callback' => 'absint',
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['after']               = array(
+			'description'       => __( 'Limit response to resources published after a given ISO8601 compliant date.', 'woocommerce' ),
+			'type'              => 'string',
+			'format'            => 'date-time',
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['before']              = array(
+			'description'       => __( 'Limit response to resources published before a given ISO8601 compliant date.', 'woocommerce' ),
+			'type'              => 'string',
+			'format'            => 'date-time',
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['order']               = array(
+			'description'       => __( 'Order sort attribute ascending or descending.', 'woocommerce' ),
+			'type'              => 'string',
+			'default'           => 'desc',
+			'enum'              => array( 'asc', 'desc' ),
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['orderby']             = array(
+			'description'       => __( 'Sort collection by object attribute.', 'woocommerce' ),
+			'type'              => 'string',
+			'default'           => 'date',
+			'enum'              => array(
+				'date',
+				'product',
+			),
+			'validate_callback' => 'rest_validate_request_arg',
 		);
 		$params['match']               = array(
 			'description'       => __( 'Indicates whether all the conditions should be true for the resulting set, or if any one of them is sufficient. Match affects the following parameters: products, orders, username, ip_address.', 'woocommerce' ),
@@ -304,6 +354,12 @@ class Controller extends GenericController implements ExportableInterface {
 			'items'             => array(
 				'type' => 'string',
 			),
+		);
+		$params['force_cache_refresh'] = array(
+			'description'       => __( 'Force retrieval of fresh data instead of from the cache.', 'woocommerce' ),
+			'type'              => 'boolean',
+			'sanitize_callback' => 'wp_validate_boolean',
+			'validate_callback' => 'rest_validate_request_arg',
 		);
 
 		return $params;

@@ -12,13 +12,8 @@ use Sabberworm\CSS\Renderable;
 use Sabberworm\CSS\Rule\Rule;
 
 /**
- * This class is a container for individual 'Rule's.
- *
- * The most common form of a rule set is one constrained by a selector, i.e., a `DeclarationBlock`.
- * However, unknown `AtRule`s (like `@font-face`) are rule sets as well.
- *
- * If you want to manipulate a `RuleSet`, use the methods `addRule(Rule $rule)`, `getRules()` and `removeRule($rule)`
- * (which accepts either a `Rule` or a rule name; optionally suffixed by a dash to remove all related rules).
+ * RuleSet is a generic superclass denoting rules. The typical example for rule sets are declaration block.
+ * However, unknown At-Rules (like `@font-face`) are also rule sets.
  */
 abstract class RuleSet implements Renderable, Commentable
 {
@@ -271,24 +266,23 @@ abstract class RuleSet implements Renderable, Commentable
     /**
      * @return string
      */
-    protected function renderRules(OutputFormat $oOutputFormat)
+    public function render(OutputFormat $oOutputFormat)
     {
         $sResult = '';
         $bIsFirst = true;
-        $oNextLevel = $oOutputFormat->nextLevel();
         foreach ($this->aRules as $aRules) {
             foreach ($aRules as $oRule) {
-                $sRendered = $oNextLevel->safely(function () use ($oRule, $oNextLevel) {
-                    return $oRule->render($oNextLevel);
+                $sRendered = $oOutputFormat->safely(function () use ($oRule, $oOutputFormat) {
+                    return $oRule->render($oOutputFormat->nextLevel());
                 });
                 if ($sRendered === null) {
                     continue;
                 }
                 if ($bIsFirst) {
                     $bIsFirst = false;
-                    $sResult .= $oNextLevel->spaceBeforeRules();
+                    $sResult .= $oOutputFormat->nextLevel()->spaceBeforeRules();
                 } else {
-                    $sResult .= $oNextLevel->spaceBetweenRules();
+                    $sResult .= $oOutputFormat->nextLevel()->spaceBetweenRules();
                 }
                 $sResult .= $sRendered;
             }

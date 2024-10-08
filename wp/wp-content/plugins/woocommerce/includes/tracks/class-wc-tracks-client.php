@@ -73,7 +73,7 @@ class WC_Tracks_Client {
 
 		// Don't set cookie on API requests.
 		if ( ! Constants::is_true( 'REST_REQUEST' ) && ! Constants::is_true( 'XMLRPC_REQUEST' ) ) {
-			WC_Site_Tracking::set_tracking_cookie( 'tk_ai', $anon_id );
+			wc_setcookie( 'tk_ai', $anon_id );
 		}
 	}
 

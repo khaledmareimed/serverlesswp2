@@ -97,7 +97,7 @@ abstract class Component {
 	 */
 	public static function get_argument_from_path( $arguments, $path, $delimiter = '.' ) {
 		$path_keys = explode( $delimiter, $path );
-		$num_keys  = false !== $path_keys ? count( $path_keys ) : 0;
+		$num_keys  = count( $path_keys );
 
 		$val = $arguments;
 		for ( $i = 0; $i < $num_keys; $i++ ) {

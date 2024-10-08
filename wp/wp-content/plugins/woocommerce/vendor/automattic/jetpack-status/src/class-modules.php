@@ -7,9 +7,8 @@
 
 namespace Automattic\Jetpack;
 
-use Automattic\Jetpack\Current_Plan as Jetpack_Plan;
+use Automattic\Jetpack\Constants as Constants;
 use Automattic\Jetpack\IP\Utils as IP_Utils;
-use Automattic\Jetpack\Status\Host;
 
 /**
  * Class Automattic\Jetpack\Modules
@@ -22,16 +21,10 @@ class Modules {
 	 * Check whether or not a Jetpack module is active.
 	 *
 	 * @param string $module The slug of a Jetpack module.
-	 * @param bool   $available_only Whether to only check among available modules.
-	 *
 	 * @return bool
 	 */
-	public function is_active( $module, $available_only = true ) {
-		if ( defined( 'IS_WPCOM' ) && IS_WPCOM ) {
-			return true;
-		}
-
-		return in_array( $module, self::get_active( $available_only ), true );
+	public function is_active( $module ) {
+		return in_array( $module, self::get_active(), true );
 	}
 
 	/**
@@ -168,7 +161,7 @@ class Modules {
 		}
 
 		$key           = md5( $file_name . maybe_serialize( $headers ) );
-		$refresh_cache = is_admin() && isset( $_GET['page'] ) && is_string( $_GET['page'] ) && str_starts_with( $_GET['page'], 'jetpack' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput
+		$refresh_cache = is_admin() && isset( $_GET['page'] ) && 'jetpack' === substr( $_GET['page'], 0, 7 ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput
 
 		// If we don't need to refresh the cache, and already have the value, short-circuit!
 		if ( ! $refresh_cache && isset( $file_data_option[ $key ] ) ) {
@@ -186,12 +179,8 @@ class Modules {
 
 	/**
 	 * Get a list of activated modules as an array of module slugs.
-	 *
-	 * @param bool $available_only Filter out the unavailable (deleted) modules.
-	 *
-	 * @return array
 	 */
-	public function get_active( $available_only = true ) {
+	public function get_active() {
 		$active = \Jetpack_Options::get_option( 'active_modules' );
 
 		if ( ! is_array( $active ) ) {
@@ -204,19 +193,14 @@ class Modules {
 			$active = array_diff( $active, array( 'vaultpress' ) );
 		}
 
-		// If protect is active on the main site of a multisite, it should be active on all sites. Doesn't apply to WP.com.
-		if ( ! in_array( 'protect', $active, true )
-			&& ! ( new Host() )->is_wpcom_simple()
-			&& is_multisite()
-			&& get_site_option( 'jetpack_protect_active' ) ) {
+		// If protect is active on the main site of a multisite, it should be active on all sites.
+		if ( ! in_array( 'protect', $active, true ) && is_multisite() && get_site_option( 'jetpack_protect_active' ) ) {
 			$active[] = 'protect';
 		}
 
-		if ( $available_only ) {
-			// If it's not available, it shouldn't be active.
-			// We don't delete it from the options though, as it will be active again when a plugin gets reactivated.
-			$active = array_intersect( $active, $this->get_available() );
-		}
+		// If it's not available, it shouldn't be active.
+		// We don't delete it from the options though, as it will be active again when a plugin gets reactivated.
+		$active = array_intersect( $active, $this->get_available() );
 
 		/**
 		 * Allow filtering of the active modules.
@@ -457,13 +441,15 @@ class Modules {
 				}
 			}
 
-			if ( ! Jetpack_Plan::supports( $module ) ) {
+			if ( class_exists( 'Jetpack_Plan' ) && ! \Jetpack_Plan::supports( $module ) ) {
 				return false;
 			}
 
 			// Check the file for fatal errors, a la wp-admin/plugins.php::activate.
+			$errors = new Errors();
 			$state->state( 'module', $module );
 			$state->state( 'error', 'module_activation_failed' ); // we'll override this later if the plugin can be included without fatal error.
+			$errors->catch_errors( true );
 
 			ob_start();
 			$module_path = $this->get_path( $module );
@@ -476,6 +462,7 @@ class Modules {
 
 			$state->state( 'error', false ); // the override.
 			ob_end_clean();
+			$errors->catch_errors( false );
 		} else { // Not a Jetpack plugin.
 			$active[] = $module;
 			$this->update_active( $active );
@@ -539,7 +526,7 @@ class Modules {
 	 *
 	 * @param array $modules Array of active modules to be saved in options.
 	 *
-	 * @return bool $success true for success, false for failure.
+	 * @return $success bool true for success, false for failure.
 	 */
 	public function update_active( $modules ) {
 		$current_modules      = \Jetpack_Options::get_option( 'active_modules', array() );

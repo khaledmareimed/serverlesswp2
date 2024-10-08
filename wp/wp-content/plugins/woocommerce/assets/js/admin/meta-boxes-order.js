@@ -636,7 +636,6 @@ jQuery( function ( $ ) {
 					} else {
 						window.alert( response.data.error );
 					}
-					wc_meta_boxes_order.init_tiptip();
 					wc_meta_boxes_order_items.unblock();
 				});
 			}
@@ -665,7 +664,6 @@ jQuery( function ( $ ) {
 				} else {
 					window.alert( response.data.error );
 				}
-				wc_meta_boxes_order.init_tiptip();
 				wc_meta_boxes_order_items.unblock();
 			});
 
@@ -1437,18 +1435,12 @@ jQuery( function ( $ ) {
 				.on( 'click', '#copy-download-link', this.copy_link )
 				.on( 'aftercopy', '#copy-download-link', this.copy_success )
 				.on( 'aftercopyfailure', '#copy-download-link', this.copy_fail );
-
-			// Work around WP's callback for '.handlediv' hiding the containing WP metabox instead of just the WC one.
-			$( '.order_download_permissions .wc-metabox .handlediv' ).on( 'click', function( e ) {
-				e.stopImmediatePropagation();
-				$( this ).closest( 'h3' ).trigger( 'click' );
-			} );
 		},
 
 		grant_access: function() {
 			var products = $( '#grant_access_id' ).val();
 
-			if ( ! products || 0 === products.length ) {
+			if ( ! products ) {
 				return;
 			}
 
@@ -1470,7 +1462,7 @@ jQuery( function ( $ ) {
 
 			$.post( woocommerce_admin_meta_boxes.ajax_url, data, function( response ) {
 
-				if ( response && -1 !== parseInt( response ) ) {
+				if ( response ) {
 					$( '.order_download_permissions .wc-metaboxes' ).append( response );
 				} else {
 					window.alert( woocommerce_admin_meta_boxes.i18n_download_permission_fail );

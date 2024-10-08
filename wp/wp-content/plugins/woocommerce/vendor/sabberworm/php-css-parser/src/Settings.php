@@ -11,8 +11,7 @@ class Settings
 {
     /**
      * Multi-byte string support.
-     *
-     * If `true` (`mbstring` extension must be enabled), will use (slower) `mb_strlen`, `mb_convert_case`, `mb_substr`
+     * If true (mbstring extension must be enabled), will use (slower) `mb_strlen`, `mb_convert_case`, `mb_substr`
      * and `mb_strpos` functions. Otherwise, the normal (ASCII-Only) functions will be used.
      *
      * @var bool
@@ -20,14 +19,15 @@ class Settings
     public $bMultibyteSupport;
 
     /**
-     * The default charset for the CSS if no `@charset` declaration is found. Defaults to utf-8.
+     * The default charset for the CSS if no `@charset` rule is found. Defaults to utf-8.
      *
      * @var string
      */
     public $sDefaultCharset = 'utf-8';
 
     /**
-     * Whether the parser silently ignore invalid rules instead of choking on them.
+     * Lenient parsing. When used (which is true by default), the parser will not choke
+     * on unexpected tokens but simply ignore them.
      *
      * @var bool
      */
@@ -47,11 +47,6 @@ class Settings
     }
 
     /**
-     * Enables/disables multi-byte string support.
-     *
-     * If `true` (`mbstring` extension must be enabled), will use (slower) `mb_strlen`, `mb_convert_case`, `mb_substr`
-     * and `mb_strpos` functions. Otherwise, the normal (ASCII-Only) functions will be used.
-     *
      * @param bool $bMultibyteSupport
      *
      * @return self fluent interface
@@ -63,8 +58,6 @@ class Settings
     }
 
     /**
-     * Sets the charset to be used if the CSS does not contain an `@charset` declaration.
-     *
      * @param string $sDefaultCharset
      *
      * @return self fluent interface
@@ -76,8 +69,6 @@ class Settings
     }
 
     /**
-     * Configures whether the parser should silently ignore invalid rules.
-     *
      * @param bool $bLenientParsing
      *
      * @return self fluent interface
@@ -89,8 +80,6 @@ class Settings
     }
 
     /**
-     * Configures the parser to choke on invalid rules.
-     *
      * @return self fluent interface
      */
     public function beStrict()

@@ -9,24 +9,17 @@ namespace Automattic\WooCommerce\Admin\API\Reports\Variations;
 
 defined( 'ABSPATH' ) || exit;
 
+use Automattic\WooCommerce\Admin\API\Reports\Controller as ReportsController;
 use Automattic\WooCommerce\Admin\API\Reports\ExportableInterface;
 use Automattic\WooCommerce\Admin\API\Reports\ExportableTraits;
-use Automattic\WooCommerce\Admin\API\Reports\GenericController;
-use Automattic\WooCommerce\Admin\API\Reports\GenericQuery;
-use Automattic\WooCommerce\Admin\API\Reports\OrderAwareControllerTrait;
-
 
 /**
  * REST API Reports products controller class.
  *
  * @internal
- * @extends GenericController
+ * @extends ReportsController
  */
-class Controller extends GenericController implements ExportableInterface {
-
-	// The controller does not use this trait. It's here for API backward compatibility.
-	use OrderAwareControllerTrait;
-
+class Controller extends ReportsController implements ExportableInterface {
 	/**
 	 * Exportable traits.
 	 */
@@ -46,56 +39,16 @@ class Controller extends GenericController implements ExportableInterface {
 	 */
 	protected $param_mapping = array(
 		'variations' => 'variation_includes',
-		'products'   => 'product_includes',
 	);
 
 	/**
-	 * Get data from `'variations'` Query.
+	 * Get items.
 	 *
-	 * @override GenericController::get_datastore_data()
+	 * @param WP_REST_Request $request Request data.
 	 *
-	 * @param array $query_args Query arguments.
-	 * @return mixed Results from the data store.
+	 * @return array|WP_Error
 	 */
-	protected function get_datastore_data( $query_args = array() ) {
-		$query = new GenericQuery( $query_args, 'variations' );
-		return $query->get_data();
-	}
-
-	/**
-	 * Prepare a report data item for serialization.
-	 *
-	 * @param array           $report  Report data item as returned from Data Store.
-	 * @param WP_REST_Request $request Request object.
-	 * @return WP_REST_Response
-	 */
-	public function prepare_item_for_response( $report, $request ) {
-		// Wrap the data in a response object.
-		$response = parent::prepare_item_for_response( $report, $request );
-
-		$response->add_links( $this->prepare_links( $report ) );
-
-		/**
-		 * Filter a report returned from the API.
-		 *
-		 * Allows modification of the report data right before it is returned.
-		 *
-		 * @since 6.5.0
-		 *
-		 * @param WP_REST_Response $response The response object.
-		 * @param object           $report   The original report object.
-		 * @param WP_REST_Request  $request  Request used to generate the response.
-		 */
-		return apply_filters( 'woocommerce_rest_prepare_report_variations', $response, $report, $request );
-	}
-
-	/**
-	 * Maps query arguments from the REST request.
-	 *
-	 * @param array $request Request array.
-	 * @return array
-	 */
-	protected function prepare_reports_query( $request ) {
+	public function get_items( $request ) {
 		$args = array();
 		/**
 		 * Experimental: Filter the list of parameters provided when querying data from the data store.
@@ -103,8 +56,6 @@ class Controller extends GenericController implements ExportableInterface {
 		 * @ignore
 		 *
 		 * @param array $collection_params List of parameters.
-		 *
-		 * @since 6.5.0
 		 */
 		$collection_params = apply_filters(
 			'experimental_woocommerce_analytics_variations_collection_params',
@@ -120,7 +71,54 @@ class Controller extends GenericController implements ExportableInterface {
 				}
 			}
 		}
-		return $args;
+
+		$reports       = new Query( $args );
+		$products_data = $reports->get_data();
+
+		$data = array();
+
+		foreach ( $products_data->data as $product_data ) {
+			$item   = $this->prepare_item_for_response( $product_data, $request );
+			$data[] = $this->prepare_response_for_collection( $item );
+		}
+
+		return $this->add_pagination_headers(
+			$request,
+			$data,
+			(int) $products_data->total,
+			(int) $products_data->page_no,
+			(int) $products_data->pages
+		);
+	}
+
+	/**
+	 * Prepare a report object for serialization.
+	 *
+	 * @param array           $report  Report data.
+	 * @param WP_REST_Request $request Request object.
+	 * @return WP_REST_Response
+	 */
+	public function prepare_item_for_response( $report, $request ) {
+		$data = $report;
+
+		$context = ! empty( $request['context'] ) ? $request['context'] : 'view';
+		$data    = $this->add_additional_fields_to_object( $data, $request );
+		$data    = $this->filter_response_by_context( $data, $context );
+
+		// Wrap the data in a response object.
+		$response = rest_ensure_response( $data );
+		$response->add_links( $this->prepare_links( $report ) );
+
+		/**
+		 * Filter a report returned from the API.
+		 *
+		 * Allows modification of the report data right before it is returned.
+		 *
+		 * @param WP_REST_Response $response The response object.
+		 * @param object           $report   The original report object.
+		 * @param WP_REST_Request  $request  Request used to generate the response.
+		 */
+		return apply_filters( 'woocommerce_rest_prepare_report_variations', $response, $report, $request );
 	}
 
 	/**
@@ -245,15 +243,38 @@ class Controller extends GenericController implements ExportableInterface {
 	 * @return array
 	 */
 	public function get_collection_params() {
-		$params                      = parent::get_collection_params();
-		$params['orderby']['enum']   = array(
-			'date',
-			'net_revenue',
-			'orders_count',
-			'items_sold',
-			'sku',
+		$params                        = array();
+		$params['context']             = $this->get_context_param( array( 'default' => 'view' ) );
+		$params['page']                = array(
+			'description'       => __( 'Current page of the collection.', 'woocommerce' ),
+			'type'              => 'integer',
+			'default'           => 1,
+			'sanitize_callback' => 'absint',
+			'validate_callback' => 'rest_validate_request_arg',
+			'minimum'           => 1,
 		);
-		$params['match']             = array(
+		$params['per_page']            = array(
+			'description'       => __( 'Maximum number of items to be returned in result set.', 'woocommerce' ),
+			'type'              => 'integer',
+			'default'           => 10,
+			'minimum'           => 1,
+			'maximum'           => 100,
+			'sanitize_callback' => 'absint',
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['after']               = array(
+			'description'       => __( 'Limit response to resources published after a given ISO8601 compliant date.', 'woocommerce' ),
+			'type'              => 'string',
+			'format'            => 'date-time',
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['before']              = array(
+			'description'       => __( 'Limit response to resources published before a given ISO8601 compliant date.', 'woocommerce' ),
+			'type'              => 'string',
+			'format'            => 'date-time',
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['match']               = array(
 			'description'       => __( 'Indicates whether all the conditions should be true for the resulting set, or if any one of them is sufficient. Match affects the following parameters: status_is, status_is_not, product_includes, product_excludes, coupon_includes, coupon_excludes, customer, categories', 'woocommerce' ),
 			'type'              => 'string',
 			'default'           => 'all',
@@ -263,7 +284,27 @@ class Controller extends GenericController implements ExportableInterface {
 			),
 			'validate_callback' => 'rest_validate_request_arg',
 		);
-		$params['product_includes']  = array(
+		$params['order']               = array(
+			'description'       => __( 'Order sort attribute ascending or descending.', 'woocommerce' ),
+			'type'              => 'string',
+			'default'           => 'desc',
+			'enum'              => array( 'asc', 'desc' ),
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['orderby']             = array(
+			'description'       => __( 'Sort collection by object attribute.', 'woocommerce' ),
+			'type'              => 'string',
+			'default'           => 'date',
+			'enum'              => array(
+				'date',
+				'net_revenue',
+				'orders_count',
+				'items_sold',
+				'sku',
+			),
+			'validate_callback' => 'rest_validate_request_arg',
+		);
+		$params['product_includes']    = array(
 			'description'       => __( 'Limit result set to items that have the specified parent product(s).', 'woocommerce' ),
 			'type'              => 'array',
 			'items'             => array(
@@ -273,7 +314,7 @@ class Controller extends GenericController implements ExportableInterface {
 			'sanitize_callback' => 'wp_parse_id_list',
 			'validate_callback' => 'rest_validate_request_arg',
 		);
-		$params['product_excludes']  = array(
+		$params['product_excludes']    = array(
 			'description'       => __( 'Limit result set to items that don\'t have the specified parent product(s).', 'woocommerce' ),
 			'type'              => 'array',
 			'items'             => array(
@@ -283,7 +324,7 @@ class Controller extends GenericController implements ExportableInterface {
 			'validate_callback' => 'rest_validate_request_arg',
 			'sanitize_callback' => 'wp_parse_id_list',
 		);
-		$params['variations']        = array(
+		$params['variations']          = array(
 			'description'       => __( 'Limit result to items with specified variation ids.', 'woocommerce' ),
 			'type'              => 'array',
 			'sanitize_callback' => 'wp_parse_id_list',
@@ -292,14 +333,14 @@ class Controller extends GenericController implements ExportableInterface {
 				'type' => 'integer',
 			),
 		);
-		$params['extended_info']     = array(
+		$params['extended_info']       = array(
 			'description'       => __( 'Add additional piece of info about each variation to the report.', 'woocommerce' ),
 			'type'              => 'boolean',
 			'default'           => false,
 			'sanitize_callback' => 'wc_string_to_bool',
 			'validate_callback' => 'rest_validate_request_arg',
 		);
-		$params['attribute_is']      = array(
+		$params['attribute_is']        = array(
 			'description'       => __( 'Limit result set to variations that include the specified attributes.', 'woocommerce' ),
 			'type'              => 'array',
 			'items'             => array(
@@ -308,7 +349,7 @@ class Controller extends GenericController implements ExportableInterface {
 			'default'           => array(),
 			'validate_callback' => 'rest_validate_request_arg',
 		);
-		$params['attribute_is_not']  = array(
+		$params['attribute_is_not']    = array(
 			'description'       => __( 'Limit result set to variations that don\'t include the specified attributes.', 'woocommerce' ),
 			'type'              => 'array',
 			'items'             => array(
@@ -317,7 +358,7 @@ class Controller extends GenericController implements ExportableInterface {
 			'default'           => array(),
 			'validate_callback' => 'rest_validate_request_arg',
 		);
-		$params['category_includes'] = array(
+		$params['category_includes']   = array(
 			'description'       => __( 'Limit result set to variations in the specified categories.', 'woocommerce' ),
 			'type'              => 'array',
 			'sanitize_callback' => 'wp_parse_id_list',
@@ -326,7 +367,7 @@ class Controller extends GenericController implements ExportableInterface {
 				'type' => 'integer',
 			),
 		);
-		$params['category_excludes'] = array(
+		$params['category_excludes']   = array(
 			'description'       => __( 'Limit result set to variations not in the specified categories.', 'woocommerce' ),
 			'type'              => 'array',
 			'sanitize_callback' => 'wp_parse_id_list',
@@ -335,14 +376,11 @@ class Controller extends GenericController implements ExportableInterface {
 				'type' => 'integer',
 			),
 		);
-		$params['products']          = array(
-			'description'       => __( 'Limit result to items with specified product ids.', 'woocommerce' ),
-			'type'              => 'array',
-			'sanitize_callback' => 'wp_parse_id_list',
+		$params['force_cache_refresh'] = array(
+			'description'       => __( 'Force retrieval of fresh data instead of from the cache.', 'woocommerce' ),
+			'type'              => 'boolean',
+			'sanitize_callback' => 'wp_validate_boolean',
 			'validate_callback' => 'rest_validate_request_arg',
-			'items'             => array(
-				'type' => 'integer',
-			),
 		);
 
 		return $params;

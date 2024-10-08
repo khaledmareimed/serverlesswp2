@@ -167,17 +167,15 @@ class PageController {
 			return apply_filters( 'woocommerce_navigation_get_breadcrumbs', array( '' ), $current_page );
 		}
 
-		$page_title = ! empty( $current_page['page_title'] ) ? $current_page['page_title'] : $current_page['title'];
-		$page_title = (array) $page_title;
-		if ( 1 === count( $page_title ) ) {
-			$breadcrumbs = $page_title;
+		if ( 1 === count( $current_page['title'] ) ) {
+			$breadcrumbs = $current_page['title'];
 		} else {
 			// If this page has multiple title pieces, only link the first one.
 			$breadcrumbs = array_merge(
 				array(
-					array( $current_page['path'], reset( $page_title ) ),
+					array( $current_page['path'], reset( $current_page['title'] ) ),
 				),
-				array_slice( $page_title, 1 )
+				array_slice( $current_page['title'], 1 )
 			);
 		}
 
@@ -439,7 +437,6 @@ class PageController {
 			'id'         => null,
 			'parent'     => null,
 			'title'      => '',
-			'page_title' => '',
 			'capability' => 'view_woocommerce_reports',
 			'path'       => '',
 			'icon'       => '',
@@ -453,30 +450,22 @@ class PageController {
 			$options['path'] = self::PAGE_ROOT . '&path=' . $options['path'];
 		}
 
-		if ( null !== $options['position'] ) {
-			$options['position'] = intval( round( $options['position'] ) );
-		}
-
-		if ( empty( $options['page_title'] ) ) {
-			$options['page_title'] = $options['title'];
-		}
-
 		if ( is_null( $options['parent'] ) ) {
 			add_menu_page(
-				$options['page_title'],
+				$options['title'],
 				$options['title'],
 				$options['capability'],
 				$options['path'],
 				array( __CLASS__, 'page_wrapper' ),
 				$options['icon'],
-				$options['position']
+				intval( round( $options['position'] ) )
 			);
 		} else {
 			$parent_path = $this->get_path_from_id( $options['parent'] );
 			// @todo check for null path.
 			add_submenu_page(
 				$parent_path,
-				$options['page_title'],
+				$options['title'],
 				$options['title'],
 				$options['capability'],
 				$options['path'],
@@ -574,6 +563,6 @@ class PageController {
 	 * TODO: See usage in `admin.php`. This needs refactored and implemented properly in core.
 	 */
 	public static function is_embed_page() {
-		return wc_admin_is_connected_page();
+		return wc_admin_is_connected_page() || ( ! self::is_admin_page() && class_exists( 'Automattic\WooCommerce\Admin\Features\Navigation\Screen' ) && Screen::is_woocommerce_page() );
 	}
 }

@@ -61,14 +61,13 @@ class AtRuleBlockList extends CSSBlockList implements AtRule
      */
     public function render(OutputFormat $oOutputFormat)
     {
-        $sResult = $oOutputFormat->comments($this);
-        $sResult .= $oOutputFormat->sBeforeAtRuleBlock;
         $sArgs = $this->sArgs;
         if ($sArgs) {
             $sArgs = ' ' . $sArgs;
         }
+        $sResult = $oOutputFormat->sBeforeAtRuleBlock;
         $sResult .= "@{$this->sType}$sArgs{$oOutputFormat->spaceBeforeOpeningBrace()}{";
-        $sResult .= $this->renderListContents($oOutputFormat);
+        $sResult .= parent::render($oOutputFormat);
         $sResult .= '}';
         $sResult .= $oOutputFormat->sAfterAtRuleBlock;
         return $sResult;

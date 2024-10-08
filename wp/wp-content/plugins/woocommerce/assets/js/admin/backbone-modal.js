@@ -54,11 +54,8 @@
 		events: {
 			'click .modal-close': 'closeButton',
 			'click #btn-ok'     : 'addButton',
-			'click #btn-back'   : 'backButton',
-			'click #btn-next'   : 'nextButton',
 			'touchstart #btn-ok': 'addButton',
-			'keydown'           : 'keyboardActions',
-			'input'             : 'handleInputValidation'
+			'keydown'           : 'keyboardActions'
 		},
 		resizeContent: function() {
 			var $content  = $( '.wc-backbone-modal-content' ).find( 'article' );
@@ -97,9 +94,9 @@
 
 			$( document.body ).trigger( 'wc_backbone_modal_loaded', this._target );
 		},
-		closeButton: function( e, addButtonCalled ) {
+		closeButton: function( e ) {
 			e.preventDefault();
-			$( document.body ).trigger( 'wc_backbone_modal_before_remove', [ this._target, this.getFormData(), !!addButtonCalled ] );
+			$( document.body ).trigger( 'wc_backbone_modal_before_remove', this._target );
 			this.undelegateEvents();
 			$( document ).off( 'focusin' );
 			$( document.body ).css({
@@ -110,25 +107,12 @@
 		},
 		addButton: function( e ) {
 			$( document.body ).trigger( 'wc_backbone_modal_response', [ this._target, this.getFormData() ] );
-			this.closeButton( e, true );
+			this.closeButton( e );
 		},
-		backButton: function( e ) {
-			$( document.body ).trigger( 'wc_backbone_modal_back_response', [ this._target, this.getFormData() ] );
-			this.closeButton( e, false );
-		},
-		nextButton: function( e ) {
-			var context = this;
-			function closeModal() {
-				context.closeButton( e );
-			}
-			$( document.body ).trigger( 'wc_backbone_modal_next_response', [ this._target, this.getFormData(), closeModal ] );
-		},
-		getFormData: function( updating = true ) {
+		getFormData: function() {
 			var data = {};
 
-			if ( updating ) {
-				$( document.body ).trigger( 'wc_backbone_modal_before_update', this._target );
-			}
+			$( document.body ).trigger( 'wc_backbone_modal_before_update', this._target );
 
 			$.each( $( 'form', this.$el ).serializeArray(), function( index, item ) {
 				if ( item.name.indexOf( '[]' ) !== -1 ) {
@@ -142,9 +126,6 @@
 
 			return data;
 		},
-		handleInputValidation: function() {
-			$( document.body ).trigger( 'wc_backbone_modal_validation', [ this._target, this.getFormData( false ) ] );
-		},
 		keyboardActions: function( e ) {
 			var button = e.keyCode || e.which;
 
@@ -153,11 +134,7 @@
 				13 === button &&
 				! ( e.target.tagName && ( e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea' ) )
 			) {
-				if ( $( '#btn-ok' ).length ) {
-					this.addButton( e );
-				}	else if ( $( '#btn-next' ).length ) {
-					this.nextButton( e );
-				}
+				this.addButton( e );
 			}
 
 			// ESC key

@@ -6,7 +6,6 @@
 namespace Automattic\WooCommerce\Internal\DependencyManagement\ServiceProviders;
 
 use Automattic\WooCommerce\Internal\DependencyManagement\AbstractServiceProvider;
-use Automattic\WooCommerce\Internal\ProductAttributesLookup\CLIRunner;
 use Automattic\WooCommerce\Internal\ProductAttributesLookup\DataRegenerator;
 use Automattic\WooCommerce\Internal\ProductAttributesLookup\Filterer;
 use Automattic\WooCommerce\Internal\ProductAttributesLookup\LookupDataStore;
@@ -25,7 +24,6 @@ class ProductAttributesLookupServiceProvider extends AbstractServiceProvider {
 		DataRegenerator::class,
 		Filterer::class,
 		LookupDataStore::class,
-		CLIRunner::class,
 	);
 
 	/**
@@ -35,6 +33,5 @@ class ProductAttributesLookupServiceProvider extends AbstractServiceProvider {
 		$this->share( DataRegenerator::class )->addArgument( LookupDataStore::class );
 		$this->share( Filterer::class )->addArgument( LookupDataStore::class );
 		$this->share( LookupDataStore::class );
-		$this->share( CLIRunner::class )->addArguments( array( DataRegenerator::class, LookupDataStore::class ) );
 	}
 }

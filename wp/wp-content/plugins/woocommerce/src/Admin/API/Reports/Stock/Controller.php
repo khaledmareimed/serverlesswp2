@@ -93,7 +93,7 @@ class Controller extends GenericController implements ExportableInterface {
 		$result = $query->query( $query_args );
 
 		$total_posts = $query->found_posts;
-		if ( $total_posts < 1 && isset( $query_args['paged'] ) && absint( $query_args['paged'] ) > 1 ) {
+		if ( $total_posts < 1 ) {
 			// Out-of-bounds, run the query again without LIMIT for total count.
 			unset( $query_args['paged'] );
 			$count_query = new \WP_Query();
@@ -276,9 +276,9 @@ class Controller extends GenericController implements ExportableInterface {
 	}
 
 	/**
-	 * Prepare a report data item for serialization.
+	 * Prepare a report object for serialization.
 	 *
-	 * @param  WC_Product      $product Report data item as returned from Data Store.
+	 * @param  WC_Product      $product  Report data.
 	 * @param  WP_REST_Request $request Request object.
 	 * @return WP_REST_Response
 	 */

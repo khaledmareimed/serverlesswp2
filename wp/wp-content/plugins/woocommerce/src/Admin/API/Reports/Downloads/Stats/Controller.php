@@ -9,7 +9,6 @@ namespace Automattic\WooCommerce\Admin\API\Reports\Downloads\Stats;
 
 defined( 'ABSPATH' ) || exit;
 
-use Automattic\WooCommerce\Admin\API\Reports\GenericQuery;
 use Automattic\WooCommerce\Admin\API\Reports\GenericStatsController;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -60,22 +59,39 @@ class Controller extends GenericStatsController {
 	}
 
 	/**
-	 * Get data from `'downloads-stats'` Query.
+	 * Get all reports.
 	 *
-	 * @override GenericController::get_datastore_data()
-	 *
-	 * @param array $query_args Query arguments.
-	 * @return mixed Results from the data store.
+	 * @param WP_REST_Request $request Request data.
+	 * @return array|WP_Error
 	 */
-	protected function get_datastore_data( $query_args = array() ) {
-		$query = new GenericQuery( $query_args, 'downloads-stats' );
-		return $query->get_data();
+	public function get_items( $request ) {
+		$query_args      = $this->prepare_reports_query( $request );
+		$downloads_query = new Query( $query_args );
+		$report_data     = $downloads_query->get_data();
+
+		$out_data = array(
+			'totals'    => get_object_vars( $report_data->totals ),
+			'intervals' => array(),
+		);
+
+		foreach ( $report_data->intervals as $interval_data ) {
+			$item                    = $this->prepare_item_for_response( $interval_data, $request );
+			$out_data['intervals'][] = $this->prepare_response_for_collection( $item );
+		}
+
+		return $this->add_pagination_headers(
+			$request,
+			$out_data,
+			(int) $report_data->total,
+			(int) $report_data->page_no,
+			(int) $report_data->pages
+		);
 	}
 
 	/**
-	 * Prepare a report data item for serialization.
+	 * Prepare a report object for serialization.
 	 *
-	 * @param array           $report  Report data item as returned from Data Store.
+	 * @param array           $report  Report data.
 	 * @param WP_REST_Request $request Request object.
 	 * @return WP_REST_Response
 	 */
@@ -93,6 +109,7 @@ class Controller extends GenericStatsController {
 		 */
 		return apply_filters( 'woocommerce_rest_prepare_report_downloads_stats', $response, $report, $request );
 	}
+
 
 	/**
 	 * Get the Report's item properties schema.
@@ -112,7 +129,6 @@ class Controller extends GenericStatsController {
 			),
 		);
 	}
-
 	/**
 	 * Get the Report's schema, conforming to JSON Schema.
 	 * It does not have the segments as in GenericStatsController.
@@ -277,6 +293,15 @@ class Controller extends GenericStatsController {
 		$params['ip_address_excludes'] = array(
 			'description'       => __( 'Limit response to objects that don\'t have a specified ip address.', 'woocommerce' ),
 			'type'              => 'array',
+			'validate_callback' => 'rest_validate_request_arg',
+			'items'             => array(
+				'type' => 'string',
+			),
+		);
+		$params['fields']              = array(
+			'description'       => __( 'Limit stats fields to the specified items.', 'woocommerce' ),
+			'type'              => 'array',
+			'sanitize_callback' => 'wp_parse_slug_list',
 			'validate_callback' => 'rest_validate_request_arg',
 			'items'             => array(
 				'type' => 'string',

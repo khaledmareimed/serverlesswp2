@@ -130,12 +130,10 @@ class Leaderboards extends \WC_REST_Data_Controller {
 				array(
 					'display' => wc_admin_number_format( $coupon['orders_count'] ),
 					'value'   => $coupon['orders_count'],
-					'format'  => 'number',
 				),
 				array(
 					'display' => wc_price( $coupon['amount'] ),
 					'value'   => $coupon['amount'],
-					'format'  => 'currency',
 				),
 			);
 		}
@@ -201,12 +199,10 @@ class Leaderboards extends \WC_REST_Data_Controller {
 				array(
 					'display' => wc_admin_number_format( $category['items_sold'] ),
 					'value'   => $category['items_sold'],
-					'format'  => 'number',
 				),
 				array(
 					'display' => wc_price( $category['net_revenue'] ),
 					'value'   => $category['net_revenue'],
-					'format'  => 'currency',
 				),
 			);
 		}
@@ -270,12 +266,10 @@ class Leaderboards extends \WC_REST_Data_Controller {
 				array(
 					'display' => wc_admin_number_format( $customer['orders_count'] ),
 					'value'   => $customer['orders_count'],
-					'format'  => 'number',
 				),
 				array(
 					'display' => wc_price( $customer['total_spend'] ),
 					'value'   => $customer['total_spend'],
-					'format'  => 'currency',
 				),
 			);
 		}
@@ -341,12 +335,10 @@ class Leaderboards extends \WC_REST_Data_Controller {
 				array(
 					'display' => wc_admin_number_format( $product['items_sold'] ),
 					'value'   => $product['items_sold'],
-					'format'  => 'number',
 				),
 				array(
 					'display' => wc_price( $product['net_revenue'] ),
 					'value'   => $product['net_revenue'],
-					'format'  => 'currency',
 				),
 			);
 		}
@@ -585,14 +577,6 @@ class Leaderboards extends \WC_REST_Data_Controller {
 								'type'        => 'string',
 								'context'     => array( 'view', 'edit' ),
 								'readonly'    => true,
-							),
-							'format'  => array(
-								'description' => __( 'Table cell format.', 'woocommerce' ),
-								'type'        => 'string',
-								'context'     => array( 'view' ),
-								'enum'        => array( 'currency', 'number' ),
-								'readonly'    => true,
-								'required'    => false,
 							),
 						),
 					),

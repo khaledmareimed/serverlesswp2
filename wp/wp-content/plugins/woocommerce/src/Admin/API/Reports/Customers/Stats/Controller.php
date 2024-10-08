@@ -7,8 +7,6 @@
 
 namespace Automattic\WooCommerce\Admin\API\Reports\Customers\Stats;
 
-use Automattic\WooCommerce\Admin\API\Reports\Customers\Query;
-
 defined( 'ABSPATH' ) || exit;
 
 use Automattic\WooCommerce\Admin\API\Reports\TimeInterval;
@@ -85,7 +83,7 @@ class Controller extends \WC_REST_Reports_Controller {
 	 */
 	public function get_items( $request ) {
 		$query_args      = $this->prepare_reports_query( $request );
-		$customers_query = new Query( $query_args, 'customers-stats' );
+		$customers_query = new Query( $query_args );
 		$report_data     = $customers_query->get_data();
 		$out_data        = array(
 			'totals' => $report_data,
@@ -95,11 +93,11 @@ class Controller extends \WC_REST_Reports_Controller {
 	}
 
 	/**
-	 * Prepare a report data item for serialization.
+	 * Prepare a report object for serialization.
 	 *
-	 * @param array            $report  Report data item as returned from Data Store.
-	 * @param \WP_REST_Request $request Request object.
-	 * @return \WP_REST_Response
+	 * @param Array           $report  Report data.
+	 * @param WP_REST_Request $request Request object.
+	 * @return WP_REST_Response
 	 */
 	public function prepare_item_for_response( $report, $request ) {
 		$data = $report;

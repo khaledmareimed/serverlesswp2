@@ -16,23 +16,14 @@
 
 namespace Automattic\WooCommerce\Admin\API\Reports\Customers;
 
-use Automattic\WooCommerce\Admin\API\Reports\GenericQuery;
-
 defined( 'ABSPATH' ) || exit;
+
+use Automattic\WooCommerce\Admin\API\Reports\Query as ReportsQuery;
 
 /**
  * API\Reports\Customers\Query
  */
-class Query extends GenericQuery {
-
-	/**
-	 * Specific query name.
-	 * Will be used to load the `report-{name}` data store,
-	 * and to call `woocommerce_analytics_{snake_case(name)}_*` filters.
-	 *
-	 * @var string
-	 */
-	protected $name = 'customers';
+class Query extends ReportsQuery {
 
 	/**
 	 * Valid fields for Customers report.
@@ -47,5 +38,18 @@ class Query extends GenericQuery {
 			'orderby'  => 'date_registered',
 			'fields'   => '*',
 		);
+	}
+
+	/**
+	 * Get product data based on the current query vars.
+	 *
+	 * @return array
+	 */
+	public function get_data() {
+		$args = apply_filters( 'woocommerce_analytics_customers_query_args', $this->get_query_vars() );
+
+		$data_store = \WC_Data_Store::load( 'report-customers' );
+		$results    = $data_store->get_data( $args );
+		return apply_filters( 'woocommerce_analytics_customers_select_query', $results, $args );
 	}
 }

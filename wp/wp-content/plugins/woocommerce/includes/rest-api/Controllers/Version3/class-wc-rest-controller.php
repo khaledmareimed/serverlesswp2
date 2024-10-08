@@ -180,15 +180,15 @@ abstract class WC_REST_Controller extends WP_REST_Controller {
 		$limit = apply_filters( 'woocommerce_rest_batch_items_limit', 100, $this->get_normalized_rest_base() );
 		$total = 0;
 
-		if ( ! empty( $items['create'] ) && is_countable( $items['create'] ) ) {
+		if ( ! empty( $items['create'] ) ) {
 			$total += count( $items['create'] );
 		}
 
-		if ( ! empty( $items['update'] ) && is_countable( $items['update'] ) ) {
+		if ( ! empty( $items['update'] ) ) {
 			$total += count( $items['update'] );
 		}
 
-		if ( ! empty( $items['delete'] ) && is_countable( $items['delete'] ) ) {
+		if ( ! empty( $items['delete'] ) ) {
 			$total += count( $items['delete'] );
 		}
 
@@ -435,14 +435,26 @@ abstract class WC_REST_Controller extends WP_REST_Controller {
 	 * Validate textarea based settings.
 	 *
 	 * @since 3.0.0
-	 * @since 9.0.0 No longer allows storing IFRAME, which was allowed for "ShareThis" integration no longer found in core.
 	 * @param string $value Value.
 	 * @param array  $setting Setting.
 	 * @return string
 	 */
 	public function validate_setting_textarea_field( $value, $setting ) {
 		$value = is_null( $value ) ? '' : $value;
-		return wp_kses_post( trim( stripslashes( $value ) ) );
+		return wp_kses(
+			trim( stripslashes( $value ) ),
+			array_merge(
+				array(
+					'iframe' => array(
+						'src'   => true,
+						'style' => true,
+						'id'    => true,
+						'class' => true,
+					),
+				),
+				wp_kses_allowed_html( 'post' )
+			)
+		);
 	}
 
 	/**
@@ -479,7 +491,7 @@ abstract class WC_REST_Controller extends WP_REST_Controller {
 					'type'        => 'array',
 					'context'     => array( 'view', 'edit' ),
 					'items'       => array(
-						'type' => 'object',
+						'type'    => 'object',
 					),
 				),
 				'update' => array(
@@ -487,7 +499,7 @@ abstract class WC_REST_Controller extends WP_REST_Controller {
 					'type'        => 'array',
 					'context'     => array( 'view', 'edit' ),
 					'items'       => array(
-						'type' => 'object',
+						'type'    => 'object',
 					),
 				),
 				'delete' => array(
@@ -495,7 +507,7 @@ abstract class WC_REST_Controller extends WP_REST_Controller {
 					'type'        => 'array',
 					'context'     => array( 'view', 'edit' ),
 					'items'       => array(
-						'type' => 'integer',
+						'type'    => 'integer',
 					),
 				),
 			),
@@ -566,7 +578,7 @@ abstract class WC_REST_Controller extends WP_REST_Controller {
 		// Return the list of all requested fields which appear in the schema.
 		$this->_fields = array_reduce(
 			$requested_fields,
-			function ( $response_fields, $field ) use ( $fields ) {
+			function( $response_fields, $field ) use ( $fields ) {
 				if ( in_array( $field, $fields, true ) ) {
 					$response_fields[] = $field;
 					return $response_fields;
@@ -608,7 +620,7 @@ abstract class WC_REST_Controller extends WP_REST_Controller {
 		if ( ! empty( $include ) ) {
 			$meta_data = array_filter(
 				$meta_data,
-				function ( WC_Meta_Data $item ) use ( $include ) {
+				function( WC_Meta_Data $item ) use ( $include ) {
 					$data = $item->get_data();
 					return in_array( $data['key'], $include, true );
 				}
@@ -616,7 +628,7 @@ abstract class WC_REST_Controller extends WP_REST_Controller {
 		} elseif ( ! empty( $exclude ) ) {
 			$meta_data = array_filter(
 				$meta_data,
-				function ( WC_Meta_Data $item ) use ( $exclude ) {
+				function( WC_Meta_Data $item ) use ( $exclude ) {
 					$data = $item->get_data();
 					return ! in_array( $data['key'], $exclude, true );
 				}

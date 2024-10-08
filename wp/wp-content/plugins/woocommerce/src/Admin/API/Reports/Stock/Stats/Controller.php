@@ -47,9 +47,9 @@ class Controller extends \WC_REST_Reports_Controller {
 	}
 
 	/**
-	 * Prepare a report data item for serialization.
+	 * Prepare a report object for serialization.
 	 *
-	 * @param  WC_Product      $report  Report data item as returned from Data Store.
+	 * @param  WC_Product      $report  Report data.
 	 * @param  WP_REST_Request $request Request object.
 	 * @return WP_REST_Response
 	 */

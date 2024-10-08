@@ -7,7 +7,6 @@
 
 use Automattic\WooCommerce\Internal\DataStores\Orders\CustomOrdersTableController;
 use Automattic\WooCommerce\Internal\DataStores\Orders\OrdersTableDataStore;
-use Automattic\WooCommerce\Internal\Utilities\Users;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -341,36 +340,17 @@ class WC_Customer_Data_Store extends WC_Data_Store_WP implements WC_Customer_Dat
 	 * @return WC_Order|false
 	 */
 	public function get_last_order( &$customer ) {
-		// Try to fetch the last order placed by this customer.
-		$last_order_id       = Users::get_site_user_meta( $customer->get_id(), 'wc_last_order', true );
-		$last_customer_order = false;
-
-		if ( ! empty( $last_order_id ) ) {
-			$last_customer_order = wc_get_order( $last_order_id );
-		}
-
-		// "Unset" the last order ID if the order is associated with another customer. Unsetting is done by making it an
-		// empty string, for compatibility with the declared types of the following filter hook.
-		if (
-			! $last_customer_order instanceof WC_Order
-			|| intval( $last_customer_order->get_customer_id() ) !== intval( $customer->get_id() )
-		) {
-			$last_order_id = '';
-		}
-
+		//phpcs:disable WooCommerce.Commenting.CommentHooks.MissingSinceComment
 		/**
 		 * Filters the id of the last order from a given customer.
 		 *
-		 * @since 4.9.1
-		 *
-		 * @param string      $last_order_id The last order id as retrieved from the database.
-		 * @param WC_Customer $customer      The customer whose last order id is being retrieved.
-		 *
+		 * @param string @last_order_id The last order id as retrieved from the database.
+		 * @param WC_Customer The customer whose last order id is being retrieved.
 		 * @return string The actual last order id to use.
 		 */
 		$last_order_id = apply_filters(
 			'woocommerce_customer_get_last_order',
-			$last_order_id,
+			get_user_meta( $customer->get_id(), '_last_order', true ),
 			$customer
 		);
 		//phpcs:enable WooCommerce.Commenting.CommentHooks.MissingSinceComment
@@ -405,7 +385,7 @@ class WC_Customer_Data_Store extends WC_Data_Store_WP implements WC_Customer_Dat
 				);
 			}
 			//phpcs:enable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			Users::update_site_user_meta( $customer->get_id(), 'wc_last_order', $last_order_id );
+			update_user_meta( $customer->get_id(), '_last_order', $last_order_id );
 		}
 
 		if ( ! $last_order_id ) {
@@ -425,7 +405,7 @@ class WC_Customer_Data_Store extends WC_Data_Store_WP implements WC_Customer_Dat
 	public function get_order_count( &$customer ) {
 		$count = apply_filters(
 			'woocommerce_customer_get_order_count',
-			Users::get_site_user_meta( $customer->get_id(), 'wc_order_count', true ),
+			get_user_meta( $customer->get_id(), '_order_count', true ),
 			$customer
 		);
 
@@ -456,7 +436,7 @@ class WC_Customer_Data_Store extends WC_Data_Store_WP implements WC_Customer_Dat
 			}
 			//phpcs:enable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
-			Users::update_site_user_meta( $customer->get_id(), 'wc_order_count', $count );
+			update_user_meta( $customer->get_id(), '_order_count', $count );
 		}
 
 		return absint( $count );
@@ -472,7 +452,7 @@ class WC_Customer_Data_Store extends WC_Data_Store_WP implements WC_Customer_Dat
 	public function get_total_spent( &$customer ) {
 		$spent = apply_filters(
 			'woocommerce_customer_get_total_spent',
-			Users::get_site_user_meta( $customer->get_id(), 'wc_money_spent', true ),
+			get_user_meta( $customer->get_id(), '_money_spent', true ),
 			$customer
 		);
 
@@ -519,7 +499,7 @@ class WC_Customer_Data_Store extends WC_Data_Store_WP implements WC_Customer_Dat
 			if ( ! $spent ) {
 				$spent = 0;
 			}
-			Users::update_site_user_meta( $customer->get_id(), 'wc_money_spent', $spent );
+			update_user_meta( $customer->get_id(), '_money_spent', $spent );
 		}
 
 		return wc_format_decimal( $spent, 2 );

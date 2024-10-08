@@ -86,11 +86,11 @@ class Webhooks {
 			case 'authorize':
 				$this->handle_authorize();
 				$this->do_exit();
-				break; // @phan-suppress-current-line PhanPluginUnreachableCode -- Safer to include it even though do_exit never returns.
+				break;
 			case 'authorize_redirect':
 				$this->handle_authorize_redirect();
 				$this->do_exit();
-				break; // @phan-suppress-current-line PhanPluginUnreachableCode -- Safer to include it even though do_exit never returns.
+				break;
 			// Class Jetpack::admin_page_load() still handles other cases.
 		}
 	}
@@ -107,7 +107,7 @@ class Webhooks {
 		}
 		do_action( 'jetpack_client_authorize_processing' );
 
-		$data              = stripslashes_deep( $_GET ); // We need all request data under the context of an authorization request.
+		$data              = stripslashes_deep( $_GET );
 		$data['auth_type'] = 'client';
 		$roles             = new Roles();
 		$role              = $roles->translate_current_user_to_role();
@@ -159,8 +159,6 @@ class Webhooks {
 
 	/**
 	 * The `exit` is wrapped into a method so we could mock it.
-	 *
-	 * @return never
 	 */
 	protected function do_exit() {
 		exit;

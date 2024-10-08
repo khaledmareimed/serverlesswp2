@@ -115,14 +115,6 @@ class AdditionalPayments extends Payments {
 		return $this->can_view_result;
 	}
 
-	/**
-	 * Action URL.
-	 *
-	 * @return string
-	 */
-	public function get_action_url() {
-		return admin_url( 'admin.php?page=wc-admin&task=payments' );
-	}
 
 	/**
 	 * Check if the store has any enabled gateways in other category.
@@ -188,7 +180,7 @@ class AdditionalPayments extends Payments {
 	 */
 	private static function get_suggestion_gateways( $filter_by = 'category_additional' ) {
 		$country            = wc_get_base_location()['country'];
-		$plugin_suggestions = Init::get_cached_or_default_suggestions();
+		$plugin_suggestions = Init::get_suggestions();
 		$plugin_suggestions = array_filter(
 			$plugin_suggestions,
 			function( $plugin ) use ( $country, $filter_by ) {

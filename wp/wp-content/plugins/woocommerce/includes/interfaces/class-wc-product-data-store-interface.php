@@ -49,7 +49,6 @@ interface WC_Product_Data_Store_Interface {
 	 */
 	public function get_product_id_by_sku( $sku );
 
-
 	/**
 	 * Returns an array of IDs of products that have sales starting soon.
 	 *

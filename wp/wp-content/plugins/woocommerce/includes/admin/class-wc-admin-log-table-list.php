@@ -17,12 +17,6 @@ if ( ! class_exists( 'WP_List_Table' ) ) {
 }
 
 class WC_Admin_Log_Table_List extends WP_List_Table {
-	/**
-	 * The key for the user option of how many list table items to display per page.
-	 *
-	 * @const string
-	 */
-	public const PER_PAGE_USER_OPTION_KEY = 'woocommerce_status_log_items_per_page';
 
 	/**
 	 * Initialize the log table list.
@@ -43,19 +37,40 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 	 * @global wpdb $wpdb
 	 */
 	public function level_dropdown() {
-		$labels = WC_Log_Levels::get_all_level_labels();
 
-		$levels = array_reduce(
-			array_keys( $labels ),
-			function( $carry, $item ) use ( $labels ) {
-				$carry[] = array(
-					'value' => $item,
-					'label' => $labels[ $item ],
-				);
-
-				return $carry;
-			},
-			array()
+		$levels = array(
+			array(
+				'value' => WC_Log_Levels::EMERGENCY,
+				'label' => __( 'Emergency', 'woocommerce' ),
+			),
+			array(
+				'value' => WC_Log_Levels::ALERT,
+				'label' => __( 'Alert', 'woocommerce' ),
+			),
+			array(
+				'value' => WC_Log_Levels::CRITICAL,
+				'label' => __( 'Critical', 'woocommerce' ),
+			),
+			array(
+				'value' => WC_Log_Levels::ERROR,
+				'label' => __( 'Error', 'woocommerce' ),
+			),
+			array(
+				'value' => WC_Log_Levels::WARNING,
+				'label' => __( 'Warning', 'woocommerce' ),
+			),
+			array(
+				'value' => WC_Log_Levels::NOTICE,
+				'label' => __( 'Notice', 'woocommerce' ),
+			),
+			array(
+				'value' => WC_Log_Levels::INFO,
+				'label' => __( 'Info', 'woocommerce' ),
+			),
+			array(
+				'value' => WC_Log_Levels::DEBUG,
+				'label' => __( 'Debug', 'woocommerce' ),
+			),
 		);
 
 		$selected_level = isset( $_REQUEST['level'] ) ? $_REQUEST['level'] : '';
@@ -78,40 +93,6 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 	}
 
 	/**
-	 * Generates the table rows.
-	 *
-	 * @return void
-	 */
-	public function display_rows() {
-		foreach ( $this->items as $log ) {
-			$this->single_row( $log );
-			if ( ! empty( $log['context'] ) ) {
-				$this->context_row( $log );
-			}
-		}
-	}
-
-	/**
-	 * Render the additional table row that contains extra log context data.
-	 *
-	 * @param array $log Log entry data.
-	 *
-	 * @return void
-	 */
-	protected function context_row( $log ) {
-		// Maintains alternating row background colors.
-		?>
-		<tr style="display: none"><td></td></tr>
-		<tr id="log-context-<?php echo esc_attr( $log['log_id'] ); ?>" class="log-context">
-			<td colspan="<?php echo esc_attr( $this->get_column_count() ); ?>">
-				<p><strong><?php esc_html_e( 'Additional context', 'woocommerce' ); ?></strong></p>
-				<pre><?php echo esc_html( $log['context'] ); ?></pre>
-			</td>
-		</tr>
-		<?php
-	}
-
-	/**
 	 * Get list columns.
 	 *
 	 * @return array
@@ -123,7 +104,6 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 			'level'     => __( 'Level', 'woocommerce' ),
 			'message'   => __( 'Message', 'woocommerce' ),
 			'source'    => __( 'Source', 'woocommerce' ),
-			'context'   => __( 'Context', 'woocommerce' ),
 		);
 	}
 
@@ -160,7 +140,16 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 	 */
 	public function column_level( $log ) {
 		$level_key = WC_Log_Levels::get_severity_level( $log['level'] );
-		$levels    = WC_Log_Levels::get_all_level_labels();
+		$levels    = array(
+			'emergency' => __( 'Emergency', 'woocommerce' ),
+			'alert'     => __( 'Alert', 'woocommerce' ),
+			'critical'  => __( 'Critical', 'woocommerce' ),
+			'error'     => __( 'Error', 'woocommerce' ),
+			'warning'   => __( 'Warning', 'woocommerce' ),
+			'notice'    => __( 'Notice', 'woocommerce' ),
+			'info'      => __( 'Info', 'woocommerce' ),
+			'debug'     => __( 'Debug', 'woocommerce' ),
+		);
 
 		if ( ! isset( $levels[ $level_key ] ) ) {
 			return '';
@@ -178,10 +167,7 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 	 * @return string
 	 */
 	public function column_message( $log ) {
-		return sprintf(
-			'<pre>%s</pre>',
-			esc_html( $log['message'] )
-		);
+		return esc_html( $log['message'] );
 	}
 
 	/**
@@ -192,36 +178,6 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 	 */
 	public function column_source( $log ) {
 		return esc_html( $log['source'] );
-	}
-
-	/**
-	 * Context column.
-	 *
-	 * @param array $log Log entry data.
-	 *
-	 * @return string
-	 */
-	public function column_context( $log ) {
-		$content = '';
-
-		if ( ! empty( $log['context'] ) ) {
-			ob_start();
-			?>
-				<button
-					class="log-toggle button button-secondary button-small"
-					data-log-id="<?php echo esc_attr( $log['log_id'] ); ?>"
-					data-toggle-status="off"
-					data-label-show="<?php esc_attr_e( 'Show context', 'woocommerce' ); ?>"
-					data-label-hide="<?php esc_attr_e( 'Hide context', 'woocommerce' ); ?>"
-				>
-					<span class="dashicons dashicons-arrow-down-alt2"></span>
-					<span class="log-toggle-label screen-reader-text"><?php esc_html_e( 'Show context', 'woocommerce' ); ?></span>
-				</button>
-			<?php
-			$content = ob_get_clean();
-		}
-
-		return $content;
 	}
 
 	/**
@@ -309,10 +265,7 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 
 		$this->prepare_column_headers();
 
-		$per_page = $this->get_items_per_page(
-			self::PER_PAGE_USER_OPTION_KEY,
-			$this->get_per_page_default()
-		);
+		$per_page = $this->get_items_per_page( 'woocommerce_status_log_items_per_page', 10 );
 
 		$where  = $this->get_items_query_where();
 		$order  = $this->get_items_query_order();
@@ -320,7 +273,7 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 		$offset = $this->get_items_query_offset();
 
 		$query_items = "
-			SELECT log_id, timestamp, level, message, source, context
+			SELECT log_id, timestamp, level, message, source
 			FROM {$wpdb->prefix}woocommerce_log
 			{$where} {$order} {$limit} {$offset}
 		";
@@ -349,11 +302,7 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 	protected function get_items_query_limit() {
 		global $wpdb;
 
-		$per_page = $this->get_items_per_page(
-			self::PER_PAGE_USER_OPTION_KEY,
-			$this->get_per_page_default()
-		);
-
+		$per_page = $this->get_items_per_page( 'woocommerce_status_log_items_per_page', 10 );
 		return $wpdb->prepare( 'LIMIT %d', $per_page );
 	}
 
@@ -367,10 +316,7 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 	protected function get_items_query_offset() {
 		global $wpdb;
 
-		$per_page     = $this->get_items_per_page(
-			self::PER_PAGE_USER_OPTION_KEY,
-			$this->get_per_page_default()
-		);
+		$per_page     = $this->get_items_per_page( 'woocommerce_status_log_items_per_page', 10 );
 		$current_page = $this->get_pagenum();
 		if ( 1 < $current_page ) {
 			$offset = $per_page * ( $current_page - 1 );
@@ -445,14 +391,5 @@ class WC_Admin_Log_Table_List extends WP_List_Table {
 			array(),
 			$this->get_sortable_columns(),
 		);
-	}
-
-	/**
-	 * Helper to get the default value for the per_page arg.
-	 *
-	 * @return int
-	 */
-	public function get_per_page_default(): int {
-		return 20;
 	}
 }

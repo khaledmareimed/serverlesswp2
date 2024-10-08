@@ -113,9 +113,8 @@ class WC_Notes_Run_Db_Update {
 			add_query_arg(
 				array(
 					'do_update_woocommerce' => 'true',
-					'return_url'            => wc_get_current_admin_url() ? wc_get_current_admin_url() : admin_url( 'admin.php?page=wc-settings' ),
 				),
-				admin_url()
+				wc_get_current_admin_url() ? wc_get_current_admin_url() : admin_url( 'admin.php?page=wc-settings' )
 			);
 
 		$note_actions = array(
@@ -131,7 +130,7 @@ class WC_Notes_Run_Db_Update {
 			array(
 				'name'    => 'update-db_learn-more',
 				'label'   => __( 'Learn more about updates', 'woocommerce' ),
-				'url'     => 'https://woocommerce.com/document/how-to-update-woocommerce/',
+				'url'     => 'https://docs.woocommerce.com/document/how-to-update-woocommerce/',
 				'status'  => 'unactioned',
 				'primary' => false,
 			),

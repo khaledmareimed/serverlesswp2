@@ -50,8 +50,6 @@ class WC_WCCOM_Site_Installation_Step_Activate_Product implements WC_WCCOM_Site_
 	 * Activate plugin.
 	 *
 	 * @param int $product_id Product ID.
-	 * @return void
-	 * @throws WC_REST_WCCOM_Site_Installer_Error If plugin activation failed.
 	 */
 	private function activate_plugin( $product_id ) {
 		// Clear plugins cache used in `WC_Helper::get_local_woo_plugins`.
@@ -76,18 +74,13 @@ class WC_WCCOM_Site_Installation_Step_Activate_Product implements WC_WCCOM_Site_
 		}
 
 		if ( empty( $filename ) ) {
-			throw new Installer_Error( Installer_Error_Codes::UNKNOWN_FILENAME );
-		}
-
-		// If the plugin is already active, make sure we call the registration hook.
-		if ( is_plugin_active( $filename ) ) {
-			WC_Helper::activated_plugin( $filename );
+			return new Installer_Error( Installer_Error_Codes::UNKNOWN_FILENAME );
 		}
 
 		$result = activate_plugin( $filename );
 
 		if ( is_wp_error( $result ) ) {
-			throw new Installer_Error( Installer_Error_Codes::PLUGIN_ACTIVATION_ERROR, $result->get_error_message() );
+			return new Installer_Error( Installer_Error_Codes::PLUGIN_ACTIVATION_ERROR, $result->get_error_message() );
 		}
 	}
 
@@ -95,8 +88,6 @@ class WC_WCCOM_Site_Installation_Step_Activate_Product implements WC_WCCOM_Site_
 	 * Activate theme.
 	 *
 	 * @param int $product_id Product ID.
-	 * @return void
-	 * @throws WC_REST_WCCOM_Site_Installer_Error If theme activation failed.
 	 */
 	private function activate_theme( $product_id ) {
 		// Clear plugins cache used in `WC_Helper::get_local_woo_themes`.
@@ -121,7 +112,7 @@ class WC_WCCOM_Site_Installation_Step_Activate_Product implements WC_WCCOM_Site_
 		}
 
 		if ( empty( $theme_slug ) ) {
-			throw new Installer_Error( Installer_Error_Codes::UNKNOWN_FILENAME );
+			return new Installer_Error( Installer_Error_Codes::UNKNOWN_FILENAME );
 		}
 
 		switch_theme( $theme_slug );

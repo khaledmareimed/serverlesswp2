@@ -13,9 +13,8 @@ use Sabberworm\CSS\Value\RuleValueList;
 use Sabberworm\CSS\Value\Value;
 
 /**
- * `Rule`s just have a string key (the rule) and a 'Value'.
- *
- * In CSS, `Rule`s are expressed as follows: “key: value[0][0] value[0][1], value[1][0] value[1][1];”
+ * RuleSets contains Rule objects which always have a key and a value.
+ * In CSS, Rules are expressed as follows: “key: value[0][0] value[0][1], value[1][0] value[1][1];”
  */
 class Rule implements Renderable, Commentable
 {
@@ -25,7 +24,7 @@ class Rule implements Renderable, Commentable
     private $sRule;
 
     /**
-     * @var RuleValueList|string|null
+     * @var RuleValueList|null
      */
     private $mValue;
 
@@ -172,7 +171,7 @@ class Rule implements Renderable, Commentable
     }
 
     /**
-     * @return RuleValueList|string|null
+     * @return RuleValueList|null
      */
     public function getValue()
     {
@@ -180,7 +179,7 @@ class Rule implements Renderable, Commentable
     }
 
     /**
-     * @param RuleValueList|string|null $mValue
+     * @param RuleValueList|null $mValue
      *
      * @return void
      */
@@ -347,8 +346,8 @@ class Rule implements Renderable, Commentable
      */
     public function render(OutputFormat $oOutputFormat)
     {
-        $sResult = "{$oOutputFormat->comments($this)}{$this->sRule}:{$oOutputFormat->spaceAfterRuleName()}";
-        if ($this->mValue instanceof Value) { // Can also be a ValueList
+        $sResult = "{$this->sRule}:{$oOutputFormat->spaceAfterRuleName()}";
+        if ($this->mValue instanceof Value) { //Can also be a ValueList
             $sResult .= $this->mValue->render($oOutputFormat);
         } else {
             $sResult .= $this->mValue;

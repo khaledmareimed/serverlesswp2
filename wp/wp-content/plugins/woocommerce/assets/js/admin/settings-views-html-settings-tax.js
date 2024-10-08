@@ -20,7 +20,7 @@
 			$save_button       = $( ':input[name="save"]' ),
 			$pagination        = $( '#rates-pagination, #rates-bottom-pagination' ),
 			$search_field      = $( '#rates-search .wc-tax-rates-search-field' ),
-			$submit            = $( '.woocommerce-save-button[type=submit]' ),
+			$submit            = $( '.submit .button-primary[type=submit]' ),
 			WCTaxTableModelConstructor = Backbone.Model.extend({
 				changes: {},
 				setRateAttribute: function( rateID, attribute, value ) {
@@ -72,13 +72,9 @@
 							opacity: 0.6
 						}
 					});
-					if ( ! $submit.attr( 'disabled' ) ) {
-						$submit.addClass( 'is-busy' );
-					}
 				},
 				unblock: function() {
 					$( '.wc_tax_rates' ).unblock();
-					$submit.removeClass( 'is-busy' );
 				},
 				save: function() {
 					var self = this;

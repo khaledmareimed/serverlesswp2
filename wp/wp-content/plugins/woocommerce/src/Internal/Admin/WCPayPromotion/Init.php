@@ -1,42 +1,55 @@
 <?php
 /**
- * Handles WooPayments promotion.
+ * Handles wcpay promotion
  */
 
 namespace Automattic\WooCommerce\Internal\Admin\WCPayPromotion;
 
 defined( 'ABSPATH' ) || exit;
 
+use Automattic\WooCommerce\Admin\DataSourcePoller;
 use Automattic\WooCommerce\Admin\Features\PaymentGatewaySuggestions\EvaluateSuggestion;
+use Automattic\WooCommerce\Admin\Features\PaymentGatewaySuggestions\PaymentGatewaySuggestionsDataSourcePoller as PaymentGatewaySuggestionsDataSourcePoller;
 use Automattic\WooCommerce\Internal\Admin\WCAdminAssets;
-use Automattic\WooCommerce\Admin\RemoteSpecs\RemoteSpecsEngine;
 
 /**
- * WooPayments Promotion engine.
+ * WC Pay Promotion engine.
  */
-class Init extends RemoteSpecsEngine {
+class Init {
+	const EXPLAT_VARIATION_PREFIX = 'woocommerce_wc_pay_promotion_payment_methods_table_';
+
 	/**
 	 * Constructor.
 	 */
 	public function __construct() {
+		include_once __DIR__ . '/WCPaymentGatewayPreInstallWCPayPromotion.php';
+
 		$is_payments_page = isset( $_GET['page'] ) && $_GET['page'] === 'wc-settings' && isset( $_GET['tab'] ) && $_GET['tab'] === 'checkout'; // phpcs:ignore WordPress.Security.NonceVerification
 		if ( ! wp_is_json_request() && ! $is_payments_page ) {
 			return;
 		}
 
 		add_filter( 'woocommerce_payment_gateways', array( __CLASS__, 'possibly_register_pre_install_wc_pay_promotion_gateway' ) );
-		add_filter( 'option_woocommerce_gateway_order', array( __CLASS__, 'set_gateway_top_of_list' ) );
-		add_filter( 'default_option_woocommerce_gateway_order', array( __CLASS__, 'set_gateway_top_of_list' ) );
-		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'load_payment_method_promotions' ) );
-		add_action( 'update_option_woocommerce_default_country', array( $this, 'delete_specs_transient' ) );
+		add_filter( 'option_woocommerce_gateway_order', [ __CLASS__, 'set_gateway_top_of_list' ] );
+		add_filter( 'default_option_woocommerce_gateway_order', [ __CLASS__, 'set_gateway_top_of_list' ] );
+
+		$rtl = is_rtl() ? '.rtl' : '';
+
+		wp_enqueue_style(
+			'wc-admin-payment-method-promotions',
+			WCAdminAssets::get_url( "payment-method-promotions/style{$rtl}", 'css' ),
+			array( 'wp-components' ),
+			WCAdminAssets::get_file_version( 'css' )
+		);
+
+		WCAdminAssets::register_script( 'wp-admin-scripts', 'payment-method-promotions', true );
 	}
 
 	/**
-	 * Possibly registers the pre-install WooPayments promoted gateway.
+	 * Possibly registers the pre install wc pay promoted gateway.
 	 *
-	 * @param array $gateways List of gateway classes.
-	 *
-	 * @return array List of gateway classes.
+	 * @param array $gateways list of gateway classes.
+	 * @return array list of gateway classes.
 	 */
 	public static function possibly_register_pre_install_wc_pay_promotion_gateway( $gateways ) {
 		if ( self::can_show_promotion() && ! WCPaymentGatewayPreInstallWCPayPromotion::is_dismissed() ) {
@@ -48,26 +61,30 @@ class Init extends RemoteSpecsEngine {
 	/**
 	 * Checks if promoted gateway can be registered.
 	 *
-	 * @return boolean If promoted gateway should be registered.
+	 * @return boolean if promoted gateway should be registered.
 	 */
 	public static function can_show_promotion() {
-		// Don't show if WooPayments is enabled.
+		// Check if WC Pay is enabled.
 		if ( class_exists( '\WC_Payments' ) ) {
 			return false;
 		}
+		if ( get_option( 'woocommerce_show_marketplace_suggestions', 'yes' ) === 'no' ) {
+			return false;
+		}
+		if ( ! apply_filters( 'woocommerce_allow_marketplace_suggestions', true ) ) {
+			return false;
+		}
 
-		// Don't show if there is no WooPayments promotion spec.
 		$wc_pay_spec = self::get_wc_pay_promotion_spec();
 		if ( ! $wc_pay_spec ) {
 			return false;
 		}
-
 		return true;
 	}
 
 	/**
 	 * By default, new payment gateways are put at the bottom of the list on the admin "Payments" settings screen.
-	 * For visibility, we want WooPayments to be at the top of the list.
+	 * For visibility, we want WooCommerce Payments to be at the top of the list.
 	 *
 	 * @param array $ordering Existing ordering of the payment gateways.
 	 *
@@ -85,9 +102,7 @@ class Init extends RemoteSpecsEngine {
 	}
 
 	/**
-	 * Get WooPayments promotion spec.
-	 *
-	 * @return object|false WooPayments promotion spec or false if there isn't one.
+	 * Get WC Pay promotion spec.
 	 */
 	public static function get_wc_pay_promotion_spec() {
 		$promotions            = self::get_promotions();
@@ -105,41 +120,29 @@ class Init extends RemoteSpecsEngine {
 
 	/**
 	 * Go through the specs and run them.
-	 *
-	 * @return array List of promotions.
 	 */
 	public static function get_promotions() {
-		$locale = get_user_locale();
+		$suggestions = array();
+		$specs       = self::get_specs();
 
-		$specs           = self::get_specs();
-		$results         = EvaluateSuggestion::evaluate_specs( $specs, array( 'source' => 'wc-wcpay-promotions' ) );
-		$specs_to_return = $results['suggestions'];
-		$specs_to_save   = null;
-
-		if ( empty( $specs_to_return ) ) {
-			// When specs are empty, replace it with defaults and save for 3 hours.
-			$specs_to_save   = DefaultPromotions::get_all();
-			$specs_to_return = EvaluateSuggestion::evaluate_specs( $specs_to_save )['suggestions'];
-		} elseif ( count( $results['errors'] ) > 0 ) {
-			// When specs are not empty but have errors, save for 3 hours.
-			$specs_to_save = $specs;
+		foreach ( $specs as $spec ) {
+			$suggestion    = EvaluateSuggestion::evaluate( $spec );
+			$suggestions[] = $suggestion;
 		}
 
-		if ( count( $results['errors'] ) > 0 ) {
-			self::log_errors( $results['errors'] );
-		}
+		return array_values(
+			array_filter(
+				$suggestions,
+				function( $suggestion ) {
+					return ! property_exists( $suggestion, 'is_visible' ) || $suggestion->is_visible;
+				}
+			)
+		);
 
-		if ( $specs_to_save ) {
-			WCPayPromotionDataSourcePoller::get_instance()->set_specs_transient( array( $locale => $specs_to_save ), 3 * HOUR_IN_SECONDS );
-		}
-
-		return $specs_to_return;
 	}
 
 	/**
 	 * Get merchant WooPay eligibility.
-	 *
-	 * @return boolean If merchant is eligible for WooPay.
 	 */
 	public static function is_woopay_eligible() {
 		$wcpay_promotion = self::get_wc_pay_promotion_spec();
@@ -156,29 +159,12 @@ class Init extends RemoteSpecsEngine {
 
 	/**
 	 * Get specs or fetch remotely if they don't exist.
-	 *
-	 * @return array List of specs.
 	 */
 	public static function get_specs() {
 		if ( get_option( 'woocommerce_show_marketplace_suggestions', 'yes' ) === 'no' ) {
-			return DefaultPromotions::get_all();
+			return array();
 		}
-
-		$specs = WCPayPromotionDataSourcePoller::get_instance()->get_specs_from_data_sources();
-		// On empty remote specs, fallback to default ones.
-		if ( ! is_array( $specs ) || 0 === count( $specs ) ) {
-			$specs = DefaultPromotions::get_all();
-		}
-
-		return $specs;
-	}
-
-	/**
-	 * Loads the payment method promotions scripts and styles.
-	 */
-	public static function load_payment_method_promotions() {
-		WCAdminAssets::register_style( 'payment-method-promotions', 'style', array( 'wp-components' ) );
-		WCAdminAssets::register_script( 'wp-admin-scripts', 'payment-method-promotions', true );
+		return WCPayPromotionDataSourcePoller::get_instance()->get_specs_from_data_sources();
 	}
 }
 
