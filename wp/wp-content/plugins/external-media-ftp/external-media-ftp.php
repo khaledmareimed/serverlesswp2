@@ -1,7 +1,7 @@
 <?php
 /*
-Plugin Name: Postimages Media Host
-Description: Uploads media to Postimages.org and displays them in the WordPress Media Library.
+Plugin Name: Custom CDN Media Host
+Description: Uploads media to a custom CDN and displays them in the WordPress Media Library.
 Version: 1.0
 Author: Your Name
 */
@@ -10,12 +10,13 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
 
-class PostimagesMediaHost {
-    private $api_endpoint = 'https://api.postimages.org/1/upload';
+class CustomCDNMediaHost {
+    private $cdn_api_endpoint = 'https://cdn.example.com/api/upload'; // Replace with your CDN's upload endpoint
 
     public function __construct() {
-        add_filter('wp_handle_upload', array($this, 'upload_to_postimages'), 10, 2);
+        add_filter('wp_handle_upload', array($this, 'upload_to_cdn'), 10, 2);
         add_filter('wp_generate_attachment_metadata', array($this, 'replace_attachment_url'), 10, 2);
+        add_filter('wp_get_attachment_url', array($this, 'get_attachment_url'), 10, 2);
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_menu', array($this, 'add_settings_page'));
     }
@@ -24,21 +25,30 @@ class PostimagesMediaHost {
      * Register plugin settings
      */
     public function register_settings() {
-        register_setting('postimages_settings_group', 'postimages_api_key');
+        register_setting('custom_cdn_settings_group', 'custom_cdn_api_key');
+        register_setting('custom_cdn_settings_group', 'custom_cdn_base_url');
 
         add_settings_section(
-            'postimages_settings_section',
-            'Postimages API Settings',
+            'custom_cdn_settings_section',
+            'Custom CDN Settings',
             null,
-            'postimages-settings'
+            'custom-cdn-settings'
         );
 
         add_settings_field(
-            'postimages_api_key',
+            'custom_cdn_api_key',
             'API Key',
             array($this, 'api_key_callback'),
-            'postimages-settings',
-            'postimages_settings_section'
+            'custom-cdn-settings',
+            'custom_cdn_settings_section'
+        );
+
+        add_settings_field(
+            'custom_cdn_base_url',
+            'CDN Base URL',
+            array($this, 'base_url_callback'),
+            'custom-cdn-settings',
+            'custom_cdn_settings_section'
         );
     }
 
@@ -46,8 +56,16 @@ class PostimagesMediaHost {
      * API Key Field Callback
      */
     public function api_key_callback() {
-        $api_key = esc_attr(get_option('postimages_api_key'));
-        echo '<input type="text" name="postimages_api_key" value="' . $api_key . '" size="50" />';
+        $api_key = esc_attr(get_option('custom_cdn_api_key'));
+        echo '<input type="text" name="custom_cdn_api_key" value="' . $api_key . '" size="50" />';
+    }
+
+    /**
+     * CDN Base URL Field Callback
+     */
+    public function base_url_callback() {
+        $base_url = esc_attr(get_option('custom_cdn_base_url'));
+        echo '<input type="text" name="custom_cdn_base_url" value="' . $base_url . '" size="50" />';
     }
 
     /**
@@ -55,10 +73,10 @@ class PostimagesMediaHost {
      */
     public function add_settings_page() {
         add_options_page(
-            'Postimages Media Host Settings',
-            'Postimages Media Host',
+            'Custom CDN Media Host Settings',
+            'Custom CDN Media Host',
             'manage_options',
-            'postimages-media-host',
+            'custom-cdn-media-host',
             array($this, 'create_settings_page')
         );
     }
@@ -69,11 +87,11 @@ class PostimagesMediaHost {
     public function create_settings_page() {
         ?>
         <div class="wrap">
-            <h1>Postimages Media Host Settings</h1>
+            <h1>Custom CDN Media Host Settings</h1>
             <form method="post" action="options.php">
                 <?php
-                settings_fields('postimages_settings_group');
-                do_settings_sections('postimages-settings');
+                settings_fields('custom_cdn_settings_group');
+                do_settings_sections('custom-cdn-settings');
                 submit_button();
                 ?>
             </form>
@@ -82,17 +100,19 @@ class PostimagesMediaHost {
     }
 
     /**
-     * Upload image to Postimages.org
+     * Upload image to CDN
      */
-    public function upload_to_postimages($upload) {
+    public function upload_to_cdn($upload, $context) {
         // Only proceed for image uploads
         if (strpos($upload['type'], 'image') === false) {
             return $upload;
         }
 
-        $api_key = get_option('postimages_api_key');
-        if (!$api_key) {
-            // API key not set; skip uploading
+        $api_key = get_option('custom_cdn_api_key');
+        $base_url = rtrim(get_option('custom_cdn_base_url'), '/');
+
+        if (!$api_key || !$base_url) {
+            // API key or base URL not set; skip uploading
             return $upload;
         }
 
@@ -100,14 +120,19 @@ class PostimagesMediaHost {
         $file_name = basename($file_path);
         $file_type = wp_check_filetype($file_path)['ext'];
 
+        // Read the file content
         $file_data = file_get_contents($file_path);
 
-        $response = wp_remote_post($this->api_endpoint, array(
-            'body' => array(
-                'key' => $api_key,
-                'image' => base64_encode($file_data),
-                'format' => 'json',
+        // Prepare the request
+        $response = wp_remote_post($this->cdn_api_endpoint, array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $api_key,
             ),
+            'body' => array(
+                'file' => base64_encode($file_data),
+                'filename' => $file_name,
+            ),
+            'timeout' => 60,
         ));
 
         if (is_wp_error($response)) {
@@ -119,10 +144,11 @@ class PostimagesMediaHost {
         $data = json_decode($body, true);
 
         if (isset($data['status']) && $data['status'] == 'success') {
-            // Replace the file URL with the external URL
-            $upload['url'] = $data['image']['url'];
-            $upload['file'] = $data['image']['url'];
-            // Optionally, delete the local file
+            // Replace the file URL with the external URL from CDN
+            $external_url = $data['url']; // Adjust based on your CDN's response
+            $upload['url'] = $external_url;
+            $upload['file'] = $external_url;
+            // Optionally, delete the local file to save space
             // unlink($file_path);
         }
 
@@ -134,9 +160,10 @@ class PostimagesMediaHost {
      */
     public function replace_attachment_url($metadata, $attachment_id) {
         $attachment = get_post($attachment_id);
-        $api_key = get_option('postimages_api_key');
+        $api_key = get_option('custom_cdn_api_key');
+        $base_url = rtrim(get_option('custom_cdn_base_url'), '/');
 
-        if (!$api_key) {
+        if (!$api_key || !$base_url) {
             return $metadata;
         }
 
@@ -145,14 +172,19 @@ class PostimagesMediaHost {
             return $metadata;
         }
 
-        // Upload to Postimages.org
+        $file_name = basename($file);
         $file_data = file_get_contents($file);
-        $response = wp_remote_post($this->api_endpoint, array(
-            'body' => array(
-                'key' => $api_key,
-                'image' => base64_encode($file_data),
-                'format' => 'json',
+
+        // Upload to CDN
+        $response = wp_remote_post($this->cdn_api_endpoint, array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $api_key,
             ),
+            'body' => array(
+                'file' => base64_encode($file_data),
+                'filename' => $file_name,
+            ),
+            'timeout' => 60,
         ));
 
         if (is_wp_error($response)) {
@@ -163,7 +195,7 @@ class PostimagesMediaHost {
         $data = json_decode($body, true);
 
         if (isset($data['status']) && $data['status'] == 'success') {
-            $external_url = $data['image']['url'];
+            $external_url = $data['url']; // Adjust based on your CDN's response
             // Update the attachment metadata with the external URL
             update_post_meta($attachment_id, '_external_image_url', $external_url);
             // Optionally, delete the local file
@@ -172,6 +204,17 @@ class PostimagesMediaHost {
 
         return $metadata;
     }
+
+    /**
+     * Filter the attachment URL to use external CDN URL if available
+     */
+    public function get_attachment_url($url, $post_id) {
+        $external_url = get_post_meta($post_id, '_external_image_url', true);
+        if ($external_url) {
+            return $external_url;
+        }
+        return $url;
+    }
 }
 
-new PostimagesMediaHost();
+new CustomCDNMediaHost();
