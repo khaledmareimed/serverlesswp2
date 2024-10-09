@@ -1,7 +1,7 @@
 <?php
 /*
-Plugin Name: FTP Media Upload with Settings (htdocs)
-Description: Uploads media to an external FTP server inside an 'htdocs' folder, with configuration in WordPress admin.
+Plugin Name: FTP Media Upload with Settings
+Description: Uploads media to an external FTP server with configuration in WordPress admin.
 Version: 1.2
 Author: Your Name
 */
@@ -116,7 +116,7 @@ function ftp_media_upload_settings_page() {
 }
 
 /**
- * Upload media file to an FTP server inside the 'htdocs' folder.
+ * Upload media file to an FTP server.
  *
  * @param array $upload Array of upload data.
  * @param string $context Upload context.
@@ -129,13 +129,16 @@ function upload_media_to_ftp($upload) {
     $ftp_pass = $options['ftp_pass'] ?? '';
     $ftp_path = $options['ftp_path'] ?? '/';
 
+    // Check if FTP extension is available
+    if (!function_exists('ftp_connect')) {
+        error_log('FTP functions are not available. Please enable the PHP FTP extension.');
+        return $upload;  // Return original upload data to avoid further errors
+    }
+
     if (!$ftp_server || !$ftp_user || !$ftp_pass) {
         error_log('FTP settings are not properly configured.');
         return $upload;
     }
-
-    // Ensure the file is uploaded to the 'htdocs' directory
-    $ftp_path = 'htdocs/' . ltrim($ftp_path, '/');
 
     // Check if the file was uploaded without errors
     if ($upload['type'] && !empty($upload['file'])) {
@@ -161,13 +164,16 @@ function upload_media_to_ftp($upload) {
         // Enable passive mode
         ftp_pasv($ftp_conn, true);
 
-        // Upload the file to 'htdocs' directory
+        // Upload the file
         $upload_result = ftp_put($ftp_conn, $ftp_path . $filename, $file, FTP_BINARY);
 
         if (!$upload_result) {
             error_log('FTP upload failed.');
         } else {
             error_log('FTP upload successful.');
+
+            // Add base URL to the uploaded file's data
+            $upload['url'] = $ftp_server . '/' . $ftp_path . $filename;
         }
 
         // Close the connection
