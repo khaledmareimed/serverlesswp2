@@ -5,75 +5,76 @@ add_filter('wp_handle_upload', 'emf_handle_upload', 10, 2);
 
 function emf_handle_upload($fileinfo, $context) {
     // Only handle uploads from the media library
-        if (isset($_POST['action']) && $_POST['action'] === 'upload-attachment') {
-                // Get FTP credentials from settings
-                        $ftp_host = get_option('emf_ftp_host');
-                                $ftp_username = get_option('emf_ftp_username');
-                                        $ftp_password = get_option('emf_ftp_password');
-                                                $ftp_port = get_option('emf_ftp_port') ?: 21;
-                                                        $base_url = rtrim(get_option('emf_ftp_base_url'), '/') . '/';
+    if (isset($_POST['action']) && $_POST['action'] === 'upload-attachment') {
+        // Get FTP credentials from settings
+        $ftp_host = get_option('emf_ftp_host');
+        $ftp_username = get_option('emf_ftp_username');
+        $ftp_password = get_option('emf_ftp_password');
+        $ftp_port = get_option('emf_ftp_port') ?: 21;
+        $base_url = rtrim(get_option('emf_ftp_base_url'), '/') . '/';
+        $ftp_directory = rtrim(get_option('emf_ftp_directory'), '/') . '/'; // Get custom directory
 
-                                                                // Establish FTP connection
-                                                                        $ftp_conn = ftp_connect($ftp_host, $ftp_port, 30);
-                                                                                if (!$ftp_conn) {
-                                                                                            error_log('External Media FTP: Could not connect to FTP server.');
-                                                                                                        return $fileinfo;
-                                                                                                                }
+        // Establish FTP connection
+        $ftp_conn = ftp_connect($ftp_host, $ftp_port, 30);
+        if (!$ftp_conn) {
+            error_log('External Media FTP: Could not connect to FTP server.');
+            return $fileinfo;
+        }
 
-                                                                                                                        // Login to FTP
-                                                                                                                                $login = ftp_login($ftp_conn, $ftp_username, $ftp_password);
-                                                                                                                                        if (!$login) {
-                                                                                                                                                    ftp_close($ftp_conn);
-                                                                                                                                                                error_log('External Media FTP: Could not login to FTP server.');
-                                                                                                                                                                            return $fileinfo;
-                                                                                                                                                                                    }
+        // Login to FTP
+        $login = ftp_login($ftp_conn, $ftp_username, $ftp_password);
+        if (!$login) {
+            ftp_close($ftp_conn);
+            error_log('External Media FTP: Could not login to FTP server.');
+            return $fileinfo;
+        }
 
-                                                                                                                                                                                            // Enable passive mode
-                                                                                                                                                                                                    ftp_pasv($ftp_conn, true);
+        // Enable passive mode
+        ftp_pasv($ftp_conn, true);
 
-                                                                                                                                                                                                            // Define the remote path
-                                                                                                                                                                                                                    $remote_path = 'wp-content/uploads/' . date('Y/m');
+        // Define the remote path (use custom directory if set)
+        $remote_path = $ftp_directory . 'wp-content/uploads/' . date('Y/m');
 
-                                                                                                                                                                                                                            // Create remote directories if they don't exist
-                                                                                                                                                                                                                                    emf_ftp_mkdir_recursive($ftp_conn, $remote_path);
+        // Create remote directories if they don't exist
+        emf_ftp_mkdir_recursive($ftp_conn, $remote_path);
 
-                                                                                                                                                                                                                                            // Define remote file path
-                                                                                                                                                                                                                                                    $remote_file = $remote_path . '/' . basename($fileinfo['file']);
+        // Define remote file path
+        $remote_file = $remote_path . '/' . basename($fileinfo['file']);
 
-                                                                                                                                                                                                                                                            // Upload the file
-                                                                                                                                                                                                                                                                    $upload = ftp_put($ftp_conn, $remote_file, $fileinfo['file'], FTP_BINARY);
-                                                                                                                                                                                                                                                                            if (!$upload) {
-                                                                                                                                                                                                                                                                                        error_log('External Media FTP: Failed to upload file to FTP server.');
-                                                                                                                                                                                                                                                                                                    ftp_close($ftp_conn);
-                                                                                                                                                                                                                                                                                                                return $fileinfo;
-                                                                                                                                                                                                                                                                                                                        }
+        // Upload the file
+        $upload = ftp_put($ftp_conn, $remote_file, $fileinfo['file'], FTP_BINARY);
+        if (!$upload) {
+            error_log('External Media FTP: Failed to upload file to FTP server.');
+            ftp_close($ftp_conn);
+            return $fileinfo;
+        }
 
-                                                                                                                                                                                                                                                                                                                                // Close FTP connection
-                                                                                                                                                                                                                                                                                                                                        ftp_close($ftp_conn);
+        // Close FTP connection
+        ftp_close($ftp_conn);
 
-                                                                                                                                                                                                                                                                                                                                                // Set the URL to the external server
-                                                                                                                                                                                                                                                                                                                                                        $fileinfo['url'] = $base_url . $remote_file;
+        // Set the URL to the external server
+        $fileinfo['url'] = $base_url . $remote_file;
 
-                                                                                                                                                                                                                                                                                                                                                                // Optionally, you might want to delete the local file to save space
-                                                                                                                                                                                                                                                                                                                                                                        // unlink($fileinfo['file']);
-                                                                                                                                                                                                                                                                                                                                                                            }
+        // Optionally, delete the local file to save space
+        // unlink($fileinfo['file']);
+    }
 
-                                                                                                                                                                                                                                                                                                                                                                                return $fileinfo;
-                                                                                                                                                                                                                                                                                                                                                                                }
+    return $fileinfo;
+}
 
-                                                                                                                                                                                                                                                                                                                                                                                function emf_ftp_mkdir_recursive($ftp_conn, $remote_dir) {
-                                                                                                                                                                                                                                                                                                                                                                                    $dirs = explode('/', $remote_dir);
-                                                                                                                                                                                                                                                                                                                                                                                        $path = '';
-                                                                                                                                                                                                                                                                                                                                                                                            foreach ($dirs as $dir) {
-                                                                                                                                                                                                                                                                                                                                                                                                    $path .= '/' . $dir;
-                                                                                                                                                                                                                                                                                                                                                                                                            if (@ftp_chdir($ftp_conn, $path)) {
-                                                                                                                                                                                                                                                                                                                                                                                                                        ftp_chdir($ftp_conn, '/'); // Change back to root after checking
-                                                                                                                                                                                                                                                                                                                                                                                                                                    continue;
-                                                                                                                                                                                                                                                                                                                                                                                                                                            }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                    if (!@ftp_mkdir($ftp_conn, $path)) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                error_log("External Media FTP: Failed to create directory {$path}");
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                            return false;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            return true;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            }
+function emf_ftp_mkdir_recursive($ftp_conn, $remote_dir) {
+    $dirs = explode('/', $remote_dir);
+    $path = '';
+    foreach ($dirs as $dir) {
+        $path .= '/' . $dir;
+        if (@ftp_chdir($ftp_conn, $path)) {
+            ftp_chdir($ftp_conn, '/'); // Change back to root after checking
+            continue;
+        }
+        if (!@ftp_mkdir($ftp_conn, $path)) {
+            error_log("External Media FTP: Failed to create directory {$path}");
+            return false;
+        }
+    }
+    return true;
+}
