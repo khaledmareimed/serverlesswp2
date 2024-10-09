@@ -1,8 +1,8 @@
 <?php
 /*
-Plugin Name: FTP Media Upload with Settings
-Description: Uploads media to an external FTP server with configuration in WordPress admin.
-Version: 1.2
+Plugin Name: FTP Media Upload with Settings, CDN, and Notifications
+Description: Uploads media to an external FTP server with configuration in WordPress admin, supports CDN, and shows notifications for success or errors.
+Version: 1.4
 Author: Your Name
 */
 
@@ -16,6 +16,9 @@ add_filter('wp_handle_upload', 'upload_media_to_ftp', 10, 2);
 // Add settings page for FTP configuration
 add_action('admin_menu', 'ftp_media_upload_settings_menu');
 add_action('admin_init', 'ftp_media_upload_settings_init');
+
+// Hook for admin notices (for errors or success messages)
+add_action('admin_notices', 'ftp_media_upload_admin_notice');
 
 /**
  * Create settings menu in WordPress dashboard.
@@ -38,7 +41,7 @@ function ftp_media_upload_settings_init() {
 
     add_settings_section(
         'ftp_media_upload_section',
-        'FTP Settings',
+        'FTP & CDN Settings',
         null,
         'ftp-media-upload-settings'
     );
@@ -74,6 +77,14 @@ function ftp_media_upload_settings_init() {
         'ftp-media-upload-settings',
         'ftp_media_upload_section'
     );
+
+    add_settings_field(
+        'cdn_url',
+        'CDN Base URL',
+        'cdn_url_field_callback',
+        'ftp-media-upload-settings',
+        'ftp_media_upload_section'
+    );
 }
 
 // Callbacks to display fields
@@ -95,6 +106,11 @@ function ftp_pass_field_callback() {
 function ftp_path_field_callback() {
     $options = get_option('ftp_media_upload_options');
     echo '<input type="text" name="ftp_media_upload_options[ftp_path]" value="' . esc_attr($options['ftp_path'] ?? '') . '" />';
+}
+
+function cdn_url_field_callback() {
+    $options = get_option('ftp_media_upload_options');
+    echo '<input type="text" name="ftp_media_upload_options[cdn_url]" value="' . esc_attr($options['cdn_url'] ?? '') . '" />';
 }
 
 /**
@@ -128,15 +144,16 @@ function upload_media_to_ftp($upload) {
     $ftp_user = $options['ftp_user'] ?? '';
     $ftp_pass = $options['ftp_pass'] ?? '';
     $ftp_path = $options['ftp_path'] ?? '/';
+    $cdn_url = $options['cdn_url'] ?? ''; // Get CDN base URL
 
     // Check if FTP extension is available
     if (!function_exists('ftp_connect')) {
-        error_log('FTP functions are not available. Please enable the PHP FTP extension.');
-        return $upload;  // Return original upload data to avoid further errors
+        set_transient('ftp_upload_status', 'error_ftp_extension', 10);
+        return $upload;
     }
 
     if (!$ftp_server || !$ftp_user || !$ftp_pass) {
-        error_log('FTP settings are not properly configured.');
+        set_transient('ftp_upload_status', 'error_invalid_settings', 10);
         return $upload;
     }
 
@@ -149,15 +166,15 @@ function upload_media_to_ftp($upload) {
         // Establish FTP connection
         $ftp_conn = ftp_connect($ftp_server);
         if (!$ftp_conn) {
-            error_log('FTP connection failed.');
+            set_transient('ftp_upload_status', 'error_connection', 10);
             return $upload;
         }
 
         // Login to the FTP server
         $login = ftp_login($ftp_conn, $ftp_user, $ftp_pass);
         if (!$login) {
-            error_log('FTP login failed.');
             ftp_close($ftp_conn);
+            set_transient('ftp_upload_status', 'error_login', 10);
             return $upload;
         }
 
@@ -168,12 +185,16 @@ function upload_media_to_ftp($upload) {
         $upload_result = ftp_put($ftp_conn, $ftp_path . $filename, $file, FTP_BINARY);
 
         if (!$upload_result) {
-            error_log('FTP upload failed.');
+            set_transient('ftp_upload_status', 'error_upload_failed', 10);
         } else {
-            error_log('FTP upload successful.');
+            set_transient('ftp_upload_status', 'success', 10);
 
-            // Add base URL to the uploaded file's data
-            $upload['url'] = $ftp_server . '/' . $ftp_path . $filename;
+            // Use CDN URL if provided, otherwise use FTP URL
+            if ($cdn_url) {
+                $upload['url'] = rtrim($cdn_url, '/') . '/' . $filename;
+            } else {
+                $upload['url'] = $ftp_server . '/' . ltrim($ftp_path, '/') . '/' . $filename;
+            }
         }
 
         // Close the connection
@@ -181,4 +202,46 @@ function upload_media_to_ftp($upload) {
     }
 
     return $upload;
+}
+
+/**
+ * Show admin notices for FTP upload status.
+ */
+function ftp_media_upload_admin_notice() {
+    if ($status = get_transient('ftp_upload_status')) {
+        switch ($status) {
+            case 'success':
+                $class = 'notice-success';
+                $message = 'File uploaded successfully to FTP server.';
+                break;
+            case 'error_ftp_extension':
+                $class = 'notice-error';
+                $message = 'Error: FTP extension is not enabled in your PHP configuration.';
+                break;
+            case 'error_invalid_settings':
+                $class = 'notice-error';
+                $message = 'Error: FTP settings are incomplete or incorrect.';
+                break;
+            case 'error_connection':
+                $class = 'notice-error';
+                $message = 'Error: Failed to connect to the FTP server.';
+                break;
+            case 'error_login':
+                $class = 'notice-error';
+                $message = 'Error: FTP login failed.';
+                break;
+            case 'error_upload_failed':
+                $class = 'notice-error';
+                $message = 'Error: FTP upload failed.';
+                break;
+            default:
+                $class = 'notice-error';
+                $message = 'An unknown error occurred during FTP upload.';
+        }
+
+        echo "<div class='$class'><p>$message</p></div>";
+
+        // Delete the transient so it doesn't show repeatedly
+        delete_transient('ftp_upload_status');
+    }
 }
