@@ -23,9 +23,9 @@ function gga_ssh2_sample_upload() {
 		// also accepts public_key and private_key filenames
 		$options = array(
 			'port' => 22,
-			'hostname' => 'baconipsum.com',
-			'username' => 'awp-sample',
-			'password' => 'password-here',
+			'hostname' => 'ftp.drivehq.com',
+			'username' => 'khaled2005.marei',
+			'password' => 'C6a@eyCiHaukBUV',
 		);
 
 		$ssh = new WP_Filesystem_SSH2( $options );
