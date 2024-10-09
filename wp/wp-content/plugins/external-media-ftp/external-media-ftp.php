@@ -1,183 +1,177 @@
 <?php
-/**
- * Plugin Name: External FTP Media Storage
- * Plugin URI: https://example.com/plugins/external-ftp-media-storage
- * Description: Store media files on an external server using FTP with custom folder selection
- * Version: 1.2
- * Author: Your Name
- * Author URI: https://example.com
- */
+/*
+Plugin Name: Postimages Media Host
+Description: Uploads media to Postimages.org and displays them in the WordPress Media Library.
+Version: 1.0
+Author: Your Name
+*/
 
-// Exit if accessed directly
 if (!defined('ABSPATH')) {
-    exit;
+    exit; // Exit if accessed directly
 }
 
-class External_FTP_Media_Storage {
-    private $ftp_server;
-    private $ftp_username;
-    private $ftp_password;
-    private $ftp_port;
-    private $remote_base_path;
-    private $remote_domain;
+class PostimagesMediaHost {
+    private $api_endpoint = 'https://api.postimages.org/1/upload';
 
     public function __construct() {
-        // Initialize FTP settings
-        $this->ftp_server = get_option('efms_ftp_server', '');
-        $this->ftp_username = get_option('efms_ftp_username', '');
-        $this->ftp_password = get_option('efms_ftp_password', '');
-        $this->ftp_port = get_option('efms_ftp_port', 21);
-        $this->remote_base_path = get_option('efms_remote_base_path', '/');
-        $this->remote_domain = get_option('efms_remote_domain', '');
-
-        // Hook into WordPress media handling
-        add_filter('wp_handle_upload', array($this, 'handle_ftp_upload'), 10, 2);
-        add_filter('wp_get_attachment_url', array($this, 'get_remote_attachment_url'), 10, 2);
-
-        // Add settings page
-        add_action('admin_menu', array($this, 'add_settings_page'));
+        add_filter('wp_handle_upload', array($this, 'upload_to_postimages'), 10, 2);
+        add_filter('wp_generate_attachment_metadata', array($this, 'replace_attachment_url'), 10, 2);
         add_action('admin_init', array($this, 'register_settings'));
-        add_action('admin_notices', array($this, 'display_admin_notices'));
+        add_action('admin_menu', array($this, 'add_settings_page'));
     }
 
-    public function handle_ftp_upload($file, $overrides) {
-        // Only handle image uploads
-        if (strpos($file['type'], 'image') === false) {
-            return $file;
-        }
+    /**
+     * Register plugin settings
+     */
+    public function register_settings() {
+        register_setting('postimages_settings_group', 'postimages_api_key');
 
-        // Initialize WP_Filesystem
-        global $wp_filesystem;
-        if (empty($wp_filesystem)) {
-            require_once (ABSPATH . '/wp-admin/includes/file.php');
-            WP_Filesystem();
-        }
+        add_settings_section(
+            'postimages_settings_section',
+            'Postimages API Settings',
+            null,
+            'postimages-settings'
+        );
 
-        $connection = $this->ftp_connect();
-        if (!$connection) {
-            $this->add_admin_notice('FTP connection failed. Please check your settings.', 'error');
-            return $file;
-        }
-
-        $remote_file = $this->remote_base_path . basename($file['file']);
-        $upload_result = $wp_filesystem->put_contents($remote_file, file_get_contents($file['file']));
-
-        if ($upload_result) {
-            // Update file location to remote URL
-            $file['url'] = $this->get_remote_url($remote_file);
-            // Remove local file
-            unlink($file['file']);
-            $this->add_admin_notice('File uploaded successfully to external FTP server.', 'success');
-        } else {
-            $this->add_admin_notice('Failed to upload file to external FTP server.', 'error');
-        }
-
-        return $file;
-    }
-
-    public function get_remote_attachment_url($url, $post_id) {
-        $file = get_post_meta($post_id, '_wp_attached_file', true);
-        if ($file) {
-            return $this->get_remote_url($file);
-        }
-        return $url;
-    }
-
-    private function ftp_connect() {
-        global $wp_filesystem;
-
-        if (empty($wp_filesystem)) {
-            require_once (ABSPATH . '/wp-admin/includes/file.php');
-            WP_Filesystem();
-        }
-
-        $ftp_url = "ftp://{$this->ftp_username}:{$this->ftp_password}@{$this->ftp_server}:{$this->ftp_port}{$this->remote_base_path}";
-        
-        if ($wp_filesystem->connect($ftp_url)) {
-            return true;
-        }
-        return false;
-    }
-
-    private function get_remote_url($path) {
-        return rtrim($this->remote_domain, '/') . '/' . ltrim($path, '/');
-    }
-
-    public function add_settings_page() {
-        add_options_page(
-            'External FTP Media Storage Settings',
-            'External FTP Media',
-            'manage_options',
-            'external-ftp-media-storage',
-            array($this, 'render_settings_page')
+        add_settings_field(
+            'postimages_api_key',
+            'API Key',
+            array($this, 'api_key_callback'),
+            'postimages-settings',
+            'postimages_settings_section'
         );
     }
 
-    public function register_settings() {
-        register_setting('efms_settings_group', 'efms_ftp_server');
-        register_setting('efms_settings_group', 'efms_ftp_username');
-        register_setting('efms_settings_group', 'efms_ftp_password');
-        register_setting('efms_settings_group', 'efms_ftp_port');
-        register_setting('efms_settings_group', 'efms_remote_base_path');
-        register_setting('efms_settings_group', 'efms_remote_domain');
+    /**
+     * API Key Field Callback
+     */
+    public function api_key_callback() {
+        $api_key = esc_attr(get_option('postimages_api_key'));
+        echo '<input type="text" name="postimages_api_key" value="' . $api_key . '" size="50" />';
     }
 
-    public function render_settings_page() {
+    /**
+     * Add settings page
+     */
+    public function add_settings_page() {
+        add_options_page(
+            'Postimages Media Host Settings',
+            'Postimages Media Host',
+            'manage_options',
+            'postimages-media-host',
+            array($this, 'create_settings_page')
+        );
+    }
+
+    /**
+     * Create settings page content
+     */
+    public function create_settings_page() {
         ?>
         <div class="wrap">
-            <h2>External FTP Media Storage Settings</h2>
+            <h1>Postimages Media Host Settings</h1>
             <form method="post" action="options.php">
-                <?php settings_fields('efms_settings_group'); ?>
-                <?php do_settings_sections('efms_settings_group'); ?>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">FTP Server</th>
-                        <td><input type="text" name="efms_ftp_server" value="<?php echo esc_attr(get_option('efms_ftp_server')); ?>" /></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">FTP Username</th>
-                        <td><input type="text" name="efms_ftp_username" value="<?php echo esc_attr(get_option('efms_ftp_username')); ?>" /></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">FTP Password</th>
-                        <td><input type="password" name="efms_ftp_password" value="<?php echo esc_attr(get_option('efms_ftp_password')); ?>" /></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">FTP Port</th>
-                        <td><input type="number" name="efms_ftp_port" value="<?php echo esc_attr(get_option('efms_ftp_port', 21)); ?>" /></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Remote Base Path</th>
-                        <td><input type="text" name="efms_remote_base_path" value="<?php echo esc_attr(get_option('efms_remote_base_path', '/')); ?>" /></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Remote Domain</th>
-                        <td><input type="text" name="efms_remote_domain" value="<?php echo esc_attr(get_option('efms_remote_domain', '')); ?>" placeholder="https://example.com" /></td>
-                    </tr>
-                </table>
-                <?php submit_button(); ?>
+                <?php
+                settings_fields('postimages_settings_group');
+                do_settings_sections('postimages-settings');
+                submit_button();
+                ?>
             </form>
         </div>
         <?php
     }
 
-    private function add_admin_notice($message, $type = 'info') {
-        $notices = get_option('efms_admin_notices', array());
-        $notices[] = array(
-            'message' => $message,
-            'type' => $type
-        );
-        update_option('efms_admin_notices', $notices);
+    /**
+     * Upload image to Postimages.org
+     */
+    public function upload_to_postimages($upload) {
+        // Only proceed for image uploads
+        if (strpos($upload['type'], 'image') === false) {
+            return $upload;
+        }
+
+        $api_key = get_option('postimages_api_key');
+        if (!$api_key) {
+            // API key not set; skip uploading
+            return $upload;
+        }
+
+        $file_path = $upload['file'];
+        $file_name = basename($file_path);
+        $file_type = wp_check_filetype($file_path)['ext'];
+
+        $file_data = file_get_contents($file_path);
+
+        $response = wp_remote_post($this->api_endpoint, array(
+            'body' => array(
+                'key' => $api_key,
+                'image' => base64_encode($file_data),
+                'format' => 'json',
+            ),
+        ));
+
+        if (is_wp_error($response)) {
+            // Handle error (you might want to log this)
+            return $upload;
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (isset($data['status']) && $data['status'] == 'success') {
+            // Replace the file URL with the external URL
+            $upload['url'] = $data['image']['url'];
+            $upload['file'] = $data['image']['url'];
+            // Optionally, delete the local file
+            // unlink($file_path);
+        }
+
+        return $upload;
     }
 
-    public function display_admin_notices() {
-        $notices = get_option('efms_admin_notices', array());
-        foreach ($notices as $notice) {
-            echo '<div class="notice notice-' . esc_attr($notice['type']) . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
+    /**
+     * Replace attachment metadata with external URL
+     */
+    public function replace_attachment_url($metadata, $attachment_id) {
+        $attachment = get_post($attachment_id);
+        $api_key = get_option('postimages_api_key');
+
+        if (!$api_key) {
+            return $metadata;
         }
-        delete_option('efms_admin_notices');
+
+        $file = get_attached_file($attachment_id);
+        if (!$file || !file_exists($file)) {
+            return $metadata;
+        }
+
+        // Upload to Postimages.org
+        $file_data = file_get_contents($file);
+        $response = wp_remote_post($this->api_endpoint, array(
+            'body' => array(
+                'key' => $api_key,
+                'image' => base64_encode($file_data),
+                'format' => 'json',
+            ),
+        ));
+
+        if (is_wp_error($response)) {
+            return $metadata;
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (isset($data['status']) && $data['status'] == 'success') {
+            $external_url = $data['image']['url'];
+            // Update the attachment metadata with the external URL
+            update_post_meta($attachment_id, '_external_image_url', $external_url);
+            // Optionally, delete the local file
+            // unlink($file);
+        }
+
+        return $metadata;
     }
 }
 
-// Initialize the plugin
-new External_FTP_Media_Storage();
+new PostimagesMediaHost();
