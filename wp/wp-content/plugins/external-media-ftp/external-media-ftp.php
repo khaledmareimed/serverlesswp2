@@ -1,7 +1,7 @@
 <?php
 /*
-Plugin Name: Custom CDN Media Host
-Description: Uploads media to a custom CDN and displays them in the WordPress Media Library.
+Plugin Name: CDN Media Host
+Description: Automatically uploads media to a custom CDN and displays them in the WordPress Media Library.
 Version: 1.0
 Author: Your Name
 */
@@ -10,13 +10,16 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
 
-class CustomCDNMediaHost {
-    private $cdn_api_endpoint = 'https://cdn.example.com/api/upload'; // Replace with your CDN's upload endpoint
+class CDN_Media_Host {
+    private $cdn_api_endpoint = 'https://cdn.example.com/api/upload'; // Replace with your CDN's actual upload endpoint
 
     public function __construct() {
+        // Hooks to handle upload and URL replacement
         add_filter('wp_handle_upload', array($this, 'upload_to_cdn'), 10, 2);
         add_filter('wp_generate_attachment_metadata', array($this, 'replace_attachment_url'), 10, 2);
         add_filter('wp_get_attachment_url', array($this, 'get_attachment_url'), 10, 2);
+
+        // Admin settings
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_menu', array($this, 'add_settings_page'));
     }
@@ -25,30 +28,21 @@ class CustomCDNMediaHost {
      * Register plugin settings
      */
     public function register_settings() {
-        register_setting('custom_cdn_settings_group', 'custom_cdn_api_key');
-        register_setting('custom_cdn_settings_group', 'custom_cdn_base_url');
+        register_setting('cdn_media_host_settings_group', 'cdn_media_host_api_key');
 
         add_settings_section(
-            'custom_cdn_settings_section',
-            'Custom CDN Settings',
+            'cdn_media_host_settings_section',
+            'CDN Media Host Settings',
             null,
-            'custom-cdn-settings'
+            'cdn-media-host-settings'
         );
 
         add_settings_field(
-            'custom_cdn_api_key',
+            'cdn_media_host_api_key',
             'API Key',
             array($this, 'api_key_callback'),
-            'custom-cdn-settings',
-            'custom_cdn_settings_section'
-        );
-
-        add_settings_field(
-            'custom_cdn_base_url',
-            'CDN Base URL',
-            array($this, 'base_url_callback'),
-            'custom-cdn-settings',
-            'custom_cdn_settings_section'
+            'cdn-media-host-settings',
+            'cdn_media_host_settings_section'
         );
     }
 
@@ -56,16 +50,8 @@ class CustomCDNMediaHost {
      * API Key Field Callback
      */
     public function api_key_callback() {
-        $api_key = esc_attr(get_option('custom_cdn_api_key'));
-        echo '<input type="text" name="custom_cdn_api_key" value="' . $api_key . '" size="50" />';
-    }
-
-    /**
-     * CDN Base URL Field Callback
-     */
-    public function base_url_callback() {
-        $base_url = esc_attr(get_option('custom_cdn_base_url'));
-        echo '<input type="text" name="custom_cdn_base_url" value="' . $base_url . '" size="50" />';
+        $api_key = esc_attr(get_option('cdn_media_host_api_key'));
+        echo '<input type="text" name="cdn_media_host_api_key" value="' . $api_key . '" size="50" />';
     }
 
     /**
@@ -73,10 +59,10 @@ class CustomCDNMediaHost {
      */
     public function add_settings_page() {
         add_options_page(
-            'Custom CDN Media Host Settings',
-            'Custom CDN Media Host',
+            'CDN Media Host Settings',
+            'CDN Media Host',
             'manage_options',
-            'custom-cdn-media-host',
+            'cdn-media-host-settings',
             array($this, 'create_settings_page')
         );
     }
@@ -87,11 +73,11 @@ class CustomCDNMediaHost {
     public function create_settings_page() {
         ?>
         <div class="wrap">
-            <h1>Custom CDN Media Host Settings</h1>
+            <h1>CDN Media Host Settings</h1>
             <form method="post" action="options.php">
                 <?php
-                settings_fields('custom_cdn_settings_group');
-                do_settings_sections('custom-cdn-settings');
+                settings_fields('cdn_media_host_settings_group');
+                do_settings_sections('cdn-media-host-settings');
                 submit_button();
                 ?>
             </form>
@@ -101,6 +87,10 @@ class CustomCDNMediaHost {
 
     /**
      * Upload image to CDN
+     *
+     * @param array $upload An array of upload data.
+     * @param string $context The context of the upload.
+     * @return array Modified upload data.
      */
     public function upload_to_cdn($upload, $context) {
         // Only proceed for image uploads
@@ -108,11 +98,9 @@ class CustomCDNMediaHost {
             return $upload;
         }
 
-        $api_key = get_option('custom_cdn_api_key');
-        $base_url = rtrim(get_option('custom_cdn_base_url'), '/');
-
-        if (!$api_key || !$base_url) {
-            // API key or base URL not set; skip uploading
+        $api_key = get_option('cdn_media_host_api_key');
+        if (!$api_key) {
+            // API key not set; skip uploading
             return $upload;
         }
 
@@ -122,34 +110,45 @@ class CustomCDNMediaHost {
 
         // Read the file content
         $file_data = file_get_contents($file_path);
+        if ($file_data === false) {
+            // Failed to read file; skip uploading
+            return $upload;
+        }
 
         // Prepare the request
         $response = wp_remote_post($this->cdn_api_endpoint, array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type'  => 'application/json',
             ),
-            'body' => array(
-                'file' => base64_encode($file_data),
+            'body'    => json_encode(array(
+                'file'     => base64_encode($file_data),
                 'filename' => $file_name,
-            ),
+            )),
             'timeout' => 60,
         ));
 
         if (is_wp_error($response)) {
             // Handle error (you might want to log this)
+            error_log('CDN Media Host Upload Error: ' . $response->get_error_message());
             return $upload;
         }
 
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
 
-        if (isset($data['status']) && $data['status'] == 'success') {
+        if (isset($data['status']) && $data['status'] === 'success' && isset($data['url'])) {
             // Replace the file URL with the external URL from CDN
-            $external_url = $data['url']; // Adjust based on your CDN's response
+            $external_url = esc_url_raw($data['url']);
             $upload['url'] = $external_url;
             $upload['file'] = $external_url;
+
             // Optionally, delete the local file to save space
+            // Uncomment the line below to enable deletion
             // unlink($file_path);
+        } else {
+            // Handle unsuccessful response
+            error_log('CDN Media Host Upload Failed: ' . $body);
         }
 
         return $upload;
@@ -157,13 +156,16 @@ class CustomCDNMediaHost {
 
     /**
      * Replace attachment metadata with external URL
+     *
+     * @param array $metadata Attachment metadata.
+     * @param int $attachment_id Attachment ID.
+     * @return array Modified metadata.
      */
     public function replace_attachment_url($metadata, $attachment_id) {
         $attachment = get_post($attachment_id);
-        $api_key = get_option('custom_cdn_api_key');
-        $base_url = rtrim(get_option('custom_cdn_base_url'), '/');
+        $api_key = get_option('cdn_media_host_api_key');
 
-        if (!$api_key || !$base_url) {
+        if (!$api_key) {
             return $metadata;
         }
 
@@ -174,32 +176,43 @@ class CustomCDNMediaHost {
 
         $file_name = basename($file);
         $file_data = file_get_contents($file);
+        if ($file_data === false) {
+            return $metadata;
+        }
 
         // Upload to CDN
         $response = wp_remote_post($this->cdn_api_endpoint, array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type'  => 'application/json',
             ),
-            'body' => array(
-                'file' => base64_encode($file_data),
+            'body'    => json_encode(array(
+                'file'     => base64_encode($file_data),
                 'filename' => $file_name,
-            ),
+            )),
             'timeout' => 60,
         ));
 
         if (is_wp_error($response)) {
+            // Handle error
+            error_log('CDN Media Host Replacement Upload Error: ' . $response->get_error_message());
             return $metadata;
         }
 
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
 
-        if (isset($data['status']) && $data['status'] == 'success') {
-            $external_url = $data['url']; // Adjust based on your CDN's response
+        if (isset($data['status']) && $data['status'] === 'success' && isset($data['url'])) {
+            $external_url = esc_url_raw($data['url']);
             // Update the attachment metadata with the external URL
             update_post_meta($attachment_id, '_external_image_url', $external_url);
-            // Optionally, delete the local file
+
+            // Optionally, delete the local file to save space
+            // Uncomment the line below to enable deletion
             // unlink($file);
+        } else {
+            // Handle unsuccessful response
+            error_log('CDN Media Host Replacement Upload Failed: ' . $body);
         }
 
         return $metadata;
@@ -207,14 +220,18 @@ class CustomCDNMediaHost {
 
     /**
      * Filter the attachment URL to use external CDN URL if available
+     *
+     * @param string $url The URL to the attachment.
+     * @param int $post_id The attachment ID.
+     * @return string Modified URL.
      */
     public function get_attachment_url($url, $post_id) {
         $external_url = get_post_meta($post_id, '_external_image_url', true);
         if ($external_url) {
-            return $external_url;
+            return esc_url($external_url);
         }
         return $url;
     }
 }
 
-new CustomCDNMediaHost();
+new CDN_Media_Host();
