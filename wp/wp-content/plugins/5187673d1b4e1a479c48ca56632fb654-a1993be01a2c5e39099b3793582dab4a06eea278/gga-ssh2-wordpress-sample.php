@@ -26,7 +26,7 @@ function wpse_74180_upload_to_ftp( $args ) {
 	 */
 
 	$settings = array(
-		'host'	  =>	'ftp.drivehq.com',  			// * the ftp-server hostname
+		'host'	  =>	'66.220.9.50',  			// * the ftp-server hostname
 		'port'    =>    21,                                 // * the ftp-server port (of type int)
 		'user'	  =>	'khaled2005.marei', 				// * ftp-user
 		'pass'	  =>	'C6a@eyCiHaukBUV',	 				// * ftp-password
