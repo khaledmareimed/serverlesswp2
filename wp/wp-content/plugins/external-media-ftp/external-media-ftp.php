@@ -3,7 +3,7 @@
  * Plugin Name: External FTP Media Storage
  * Plugin URI: https://example.com/plugins/external-ftp-media-storage
  * Description: Store media files on an external server using FTP
- * Version: 1.0
+ * Version: 1.1
  * Author: Your Name
  * Author URI: https://example.com
  */
@@ -43,13 +43,20 @@ class External_FTP_Media_Storage {
             return $file;
         }
 
-        $ftp_conn = $this->ftp_connect();
-        if (!$ftp_conn) {
+        // Initialize WP_Filesystem
+        global $wp_filesystem;
+        if (empty($wp_filesystem)) {
+            require_once (ABSPATH . '/wp-admin/includes/file.php');
+            WP_Filesystem();
+        }
+
+        $connection = $this->ftp_connect();
+        if (!$connection) {
             return $file;
         }
 
         $remote_file = $this->remote_base_path . basename($file['file']);
-        $upload_result = ftp_put($ftp_conn, $remote_file, $file['file'], FTP_BINARY);
+        $upload_result = $wp_filesystem->put_contents($remote_file, file_get_contents($file['file']));
 
         if ($upload_result) {
             // Update file location to remote URL
@@ -58,7 +65,6 @@ class External_FTP_Media_Storage {
             unlink($file['file']);
         }
 
-        ftp_close($ftp_conn);
         return $file;
     }
 
@@ -71,10 +77,17 @@ class External_FTP_Media_Storage {
     }
 
     private function ftp_connect() {
-        $ftp_conn = ftp_connect($this->ftp_server, $this->ftp_port);
-        if ($ftp_conn && ftp_login($ftp_conn, $this->ftp_username, $this->ftp_password)) {
-            ftp_pasv($ftp_conn, true);
-            return $ftp_conn;
+        global $wp_filesystem;
+
+        if (empty($wp_filesystem)) {
+            require_once (ABSPATH . '/wp-admin/includes/file.php');
+            WP_Filesystem();
+        }
+
+        $ftp_url = "ftp://{$this->ftp_username}:{$this->ftp_password}@{$this->ftp_server}:{$this->ftp_port}";
+        
+        if ($wp_filesystem->connect($ftp_url)) {
+            return true;
         }
         return false;
     }
