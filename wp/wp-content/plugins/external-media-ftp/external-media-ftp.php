@@ -1,83 +1,104 @@
 <?php
 /*
-Plugin Name: CDN Media Host
-Description: Automatically uploads media to a custom CDN and displays them in the WordPress Media Library.
+Plugin Name: PostImages Integration
+Plugin URI: https://yourwebsite.com/postimages-integration
+Description: Integrates WordPress media uploads with postImages.org for external image hosting.
 Version: 1.0
 Author: Your Name
+Author URI: https://yourwebsite.com
+License: GPL2
+Text Domain: postimages-integration
 */
 
-if (!defined('ABSPATH')) {
+if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly
 }
 
-class CDN_Media_Host {
-    private $cdn_api_endpoint = 'https://cdn.example.com/api/upload'; // Replace with your CDN's actual upload endpoint
+class PostImages_Integration {
+
+    private $option_name = 'pi_api_key';
 
     public function __construct() {
-        // Hooks to handle upload and URL replacement
-        add_filter('wp_handle_upload', array($this, 'upload_to_cdn'), 10, 2);
-        add_filter('wp_generate_attachment_metadata', array($this, 'replace_attachment_url'), 10, 2);
-        add_filter('wp_get_attachment_url', array($this, 'get_attachment_url'), 10, 2);
+        // Initialize plugin
+        add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
+        add_action( 'admin_init', array( $this, 'register_settings' ) );
 
-        // Admin settings
-        add_action('admin_init', array($this, 'register_settings'));
-        add_action('admin_menu', array($this, 'add_settings_page'));
+        // Handle media uploads
+        add_filter( 'wp_handle_upload_prefilter', array( $this, 'filter_upload_prefilter' ) );
+        add_filter( 'wp_handle_upload', array( $this, 'handle_upload' ), 10, 2 );
+
+        // Customize attachment URL
+        add_filter( 'wp_get_attachment_url', array( $this, 'filter_attachment_url' ), 10, 2 );
+
+        // Add custom field to media library
+        add_filter( 'attachment_fields_to_save', array( $this, 'save_attachment_fields' ), 10, 2 );
     }
 
     /**
-     * Register plugin settings
-     */
-    public function register_settings() {
-        register_setting('cdn_media_host_settings_group', 'cdn_media_host_api_key');
-
-        add_settings_section(
-            'cdn_media_host_settings_section',
-            'CDN Media Host Settings',
-            null,
-            'cdn-media-host-settings'
-        );
-
-        add_settings_field(
-            'cdn_media_host_api_key',
-            'API Key',
-            array($this, 'api_key_callback'),
-            'cdn-media-host-settings',
-            'cdn_media_host_settings_section'
-        );
-    }
-
-    /**
-     * API Key Field Callback
-     */
-    public function api_key_callback() {
-        $api_key = esc_attr(get_option('cdn_media_host_api_key'));
-        echo '<input type="text" name="cdn_media_host_api_key" value="' . $api_key . '" size="50" />';
-    }
-
-    /**
-     * Add settings page
+     * Add settings page under Settings menu
      */
     public function add_settings_page() {
         add_options_page(
-            'CDN Media Host Settings',
-            'CDN Media Host',
+            'PostImages Integration Settings',
+            'PostImages Integration',
             'manage_options',
-            'cdn-media-host-settings',
-            array($this, 'create_settings_page')
+            'postimages-integration',
+            array( $this, 'create_settings_page' )
         );
     }
 
     /**
-     * Create settings page content
+     * Register settings
+     */
+    public function register_settings() {
+        register_setting( 'pi_settings_group', $this->option_name, array(
+            'type'              => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default'           => '',
+        ) );
+
+        add_settings_section(
+            'pi_settings_section',
+            'API Settings',
+            array( $this, 'settings_section_callback' ),
+            'postimages-integration'
+        );
+
+        add_settings_field(
+            'pi_api_key_field',
+            'PostImages API Key',
+            array( $this, 'api_key_field_callback' ),
+            'postimages-integration',
+            'pi_settings_section'
+        );
+    }
+
+    /**
+     * Settings section description
+     */
+    public function settings_section_callback() {
+        echo '<p>Enter your PostImages.org API key below.</p>';
+    }
+
+    /**
+     * API Key field HTML
+     */
+    public function api_key_field_callback() {
+        $api_key = get_option( $this->option_name );
+        echo '<input type="text" id="pi_api_key_field" name="' . esc_attr( $this->option_name ) . '" value="' . esc_attr( $api_key ) . '" size="50" />';
+    }
+
+    /**
+     * Create the settings page HTML
      */
     public function create_settings_page() {
         ?>
         <div class="wrap">
-            <h1>CDN Media Host Settings</h1>
+            <h1>PostImages Integration Settings</h1>
             <form method="post" action="options.php">
                 <?php
-                settings_fields('cdn_media_host_settings_group');
-                do_settings_sections('cdn-media-host-settings');
+                settings_fields( 'pi_settings_group' );
+                do_settings_sections( 'postimages-integration' );
                 submit_button();
                 ?>
             </form>
@@ -86,152 +107,129 @@ class CDN_Media_Host {
     }
 
     /**
-     * Upload image to CDN
-     *
-     * @param array $upload An array of upload data.
-     * @param string $context The context of the upload.
-     * @return array Modified upload data.
+     * Pre-upload filter to ensure API key is set
      */
-    public function upload_to_cdn($upload, $context) {
-        // Only proceed for image uploads
-        if (strpos($upload['type'], 'image') === false) {
+    public function filter_upload_prefilter( $file ) {
+        // Check if API key is set
+        $api_key = get_option( $this->option_name );
+        if ( empty( $api_key ) ) {
+            $file['error'] = 'PostImages Integration: API key is not set. Please set it in the plugin settings.';
+        }
+
+        return $file;
+    }
+
+    /**
+     * Handle the upload by sending it to PostImages.org and modifying the upload array
+     */
+    public function handle_upload( $upload, $context ) {
+        // Only handle if no errors
+        if ( isset( $upload['error'] ) && ! empty( $upload['error'] ) ) {
             return $upload;
         }
 
-        $api_key = get_option('cdn_media_host_api_key');
-        if (!$api_key) {
-            // API key not set; skip uploading
+        // Check if it's an image
+        if ( strpos( $upload['type'], 'image' ) === false ) {
             return $upload;
         }
 
+        $api_key = get_option( $this->option_name );
+        if ( empty( $api_key ) ) {
+            // This should have been caught in prefilter, but just in case
+            $upload['error'] = 'PostImages Integration: API key is not set.';
+            return $upload;
+        }
+
+        // Prepare the file for upload
         $file_path = $upload['file'];
-        $file_name = basename($file_path);
-        $file_type = wp_check_filetype($file_path)['ext'];
+        $file_name = basename( $file_path );
 
-        // Read the file content
-        $file_data = file_get_contents($file_path);
-        if ($file_data === false) {
-            // Failed to read file; skip uploading
+        // Read the file
+        $file_data = file_get_contents( $file_path );
+        if ( false === $file_data ) {
+            $upload['error'] = 'PostImages Integration: Failed to read the uploaded file.';
             return $upload;
         }
 
-        // Prepare the request
-        $response = wp_remote_post($this->cdn_api_endpoint, array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $api_key,
-                'Content-Type'  => 'application/json',
+        // Prepare the API request
+        $response = wp_remote_post( 'https://api.postimages.org/1/upload', array(
+            'body' => array(
+                'key' => $api_key,
+                'image' => base64_encode( $file_data ),
+                'format' => 'json',
             ),
-            'body'    => json_encode(array(
-                'file'     => base64_encode($file_data),
-                'filename' => $file_name,
-            )),
             'timeout' => 60,
-        ));
+        ) );
 
-        if (is_wp_error($response)) {
-            // Handle error (you might want to log this)
-            error_log('CDN Media Host Upload Error: ' . $response->get_error_message());
+        if ( is_wp_error( $response ) ) {
+            $upload['error'] = 'PostImages Integration: API request failed. ' . $response->get_error_message();
             return $upload;
         }
 
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
+        $response_code = wp_remote_retrieve_response_code( $response );
+        if ( 200 !== $response_code ) {
+            $upload['error'] = 'PostImages Integration: API returned an unexpected response code: ' . $response_code;
+            return $upload;
+        }
 
-        if (isset($data['status']) && $data['status'] === 'success' && isset($data['url'])) {
-            // Replace the file URL with the external URL from CDN
-            $external_url = esc_url_raw($data['url']);
-            $upload['url'] = $external_url;
-            $upload['file'] = $external_url;
+        $body = wp_remote_retrieve_body( $response );
+        $data = json_decode( $body, true );
 
-            // Optionally, delete the local file to save space
-            // Uncomment the line below to enable deletion
-            // unlink($file_path);
-        } else {
-            // Handle unsuccessful response
-            error_log('CDN Media Host Upload Failed: ' . $body);
+        if ( json_last_error() !== JSON_ERROR_NONE ) {
+            $upload['error'] = 'PostImages Integration: Failed to parse API response.';
+            return $upload;
+        }
+
+        if ( isset( $data['status'] ) && $data['status'] !== 'success' ) {
+            $message = isset( $data['error'] ) ? $data['error'] : 'Unknown error.';
+            $upload['error'] = 'PostImages Integration: API error - ' . $message;
+            return $upload;
+        }
+
+        if ( ! isset( $data['image']['url'] ) ) {
+            $upload['error'] = 'PostImages Integration: API response does not contain image URL.';
+            return $upload;
+        }
+
+        // Get the hosted image URL
+        $hosted_url = esc_url_raw( $data['image']['url'] );
+
+        // Update the upload array to use the hosted URL
+        $upload['url'] = $hosted_url;
+        $upload['file'] = $hosted_url;
+        $upload['type'] = $upload['type']; // Keep the MIME type
+
+        // Optionally, you can customize the file name here based on API response
+        // For example, if the API returns a unique identifier
+        if ( isset( $data['image']['shorturl'] ) ) {
+            $unique_id = sanitize_title( $data['image']['shorturl'] );
+            $upload['name'] = $unique_id . '.' . pathinfo( $file_name, PATHINFO_EXTENSION );
         }
 
         return $upload;
     }
 
     /**
-     * Replace attachment metadata with external URL
-     *
-     * @param array $metadata Attachment metadata.
-     * @param int $attachment_id Attachment ID.
-     * @return array Modified metadata.
+     * Filter the attachment URL to point to the hosted image
      */
-    public function replace_attachment_url($metadata, $attachment_id) {
-        $attachment = get_post($attachment_id);
-        $api_key = get_option('cdn_media_host_api_key');
-
-        if (!$api_key) {
-            return $metadata;
-        }
-
-        $file = get_attached_file($attachment_id);
-        if (!$file || !file_exists($file)) {
-            return $metadata;
-        }
-
-        $file_name = basename($file);
-        $file_data = file_get_contents($file);
-        if ($file_data === false) {
-            return $metadata;
-        }
-
-        // Upload to CDN
-        $response = wp_remote_post($this->cdn_api_endpoint, array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $api_key,
-                'Content-Type'  => 'application/json',
-            ),
-            'body'    => json_encode(array(
-                'file'     => base64_encode($file_data),
-                'filename' => $file_name,
-            )),
-            'timeout' => 60,
-        ));
-
-        if (is_wp_error($response)) {
-            // Handle error
-            error_log('CDN Media Host Replacement Upload Error: ' . $response->get_error_message());
-            return $metadata;
-        }
-
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
-
-        if (isset($data['status']) && $data['status'] === 'success' && isset($data['url'])) {
-            $external_url = esc_url_raw($data['url']);
-            // Update the attachment metadata with the external URL
-            update_post_meta($attachment_id, '_external_image_url', $external_url);
-
-            // Optionally, delete the local file to save space
-            // Uncomment the line below to enable deletion
-            // unlink($file);
-        } else {
-            // Handle unsuccessful response
-            error_log('CDN Media Host Replacement Upload Failed: ' . $body);
-        }
-
-        return $metadata;
-    }
-
-    /**
-     * Filter the attachment URL to use external CDN URL if available
-     *
-     * @param string $url The URL to the attachment.
-     * @param int $post_id The attachment ID.
-     * @return string Modified URL.
-     */
-    public function get_attachment_url($url, $post_id) {
-        $external_url = get_post_meta($post_id, '_external_image_url', true);
-        if ($external_url) {
-            return esc_url($external_url);
+    public function filter_attachment_url( $url, $post_id ) {
+        $hosted_url = get_post_meta( $post_id, '_pi_hosted_url', true );
+        if ( ! empty( $hosted_url ) ) {
+            return esc_url( $hosted_url );
         }
         return $url;
     }
+
+    /**
+     * Save custom attachment fields
+     */
+    public function save_attachment_fields( $post, $attachment ) {
+        if ( isset( $attachment['pi_hosted_url'] ) ) {
+            update_post_meta( $post['ID'], '_pi_hosted_url', esc_url_raw( $attachment['pi_hosted_url'] ) );
+        }
+        return $post;
+    }
+
 }
 
-new CDN_Media_Host();
+new PostImages_Integration();
