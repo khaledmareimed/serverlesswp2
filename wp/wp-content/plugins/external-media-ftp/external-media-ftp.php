@@ -2,8 +2,8 @@
 /**
  * Plugin Name: External FTP Media Storage
  * Plugin URI: https://example.com/plugins/external-ftp-media-storage
- * Description: Store media files on an external server using FTP
- * Version: 1.1
+ * Description: Store media files on an external server using FTP with custom folder selection
+ * Version: 1.2
  * Author: Your Name
  * Author URI: https://example.com
  */
@@ -19,6 +19,7 @@ class External_FTP_Media_Storage {
     private $ftp_password;
     private $ftp_port;
     private $remote_base_path;
+    private $remote_domain;
 
     public function __construct() {
         // Initialize FTP settings
@@ -27,6 +28,7 @@ class External_FTP_Media_Storage {
         $this->ftp_password = get_option('efms_ftp_password', '');
         $this->ftp_port = get_option('efms_ftp_port', 21);
         $this->remote_base_path = get_option('efms_remote_base_path', '/');
+        $this->remote_domain = get_option('efms_remote_domain', '');
 
         // Hook into WordPress media handling
         add_filter('wp_handle_upload', array($this, 'handle_ftp_upload'), 10, 2);
@@ -35,6 +37,7 @@ class External_FTP_Media_Storage {
         // Add settings page
         add_action('admin_menu', array($this, 'add_settings_page'));
         add_action('admin_init', array($this, 'register_settings'));
+        add_action('admin_notices', array($this, 'display_admin_notices'));
     }
 
     public function handle_ftp_upload($file, $overrides) {
@@ -52,6 +55,7 @@ class External_FTP_Media_Storage {
 
         $connection = $this->ftp_connect();
         if (!$connection) {
+            $this->add_admin_notice('FTP connection failed. Please check your settings.', 'error');
             return $file;
         }
 
@@ -63,6 +67,9 @@ class External_FTP_Media_Storage {
             $file['url'] = $this->get_remote_url($remote_file);
             // Remove local file
             unlink($file['file']);
+            $this->add_admin_notice('File uploaded successfully to external FTP server.', 'success');
+        } else {
+            $this->add_admin_notice('Failed to upload file to external FTP server.', 'error');
         }
 
         return $file;
@@ -71,7 +78,7 @@ class External_FTP_Media_Storage {
     public function get_remote_attachment_url($url, $post_id) {
         $file = get_post_meta($post_id, '_wp_attached_file', true);
         if ($file) {
-            return $this->get_remote_url($this->remote_base_path . $file);
+            return $this->get_remote_url($file);
         }
         return $url;
     }
@@ -84,7 +91,7 @@ class External_FTP_Media_Storage {
             WP_Filesystem();
         }
 
-        $ftp_url = "ftp://{$this->ftp_username}:{$this->ftp_password}@{$this->ftp_server}:{$this->ftp_port}";
+        $ftp_url = "ftp://{$this->ftp_username}:{$this->ftp_password}@{$this->ftp_server}:{$this->ftp_port}{$this->remote_base_path}";
         
         if ($wp_filesystem->connect($ftp_url)) {
             return true;
@@ -93,8 +100,7 @@ class External_FTP_Media_Storage {
     }
 
     private function get_remote_url($path) {
-        // Construct the remote URL based on your setup
-        return 'http://' . $this->ftp_server . '/' . ltrim($path, '/');
+        return rtrim($this->remote_domain, '/') . '/' . ltrim($path, '/');
     }
 
     public function add_settings_page() {
@@ -113,6 +119,7 @@ class External_FTP_Media_Storage {
         register_setting('efms_settings_group', 'efms_ftp_password');
         register_setting('efms_settings_group', 'efms_ftp_port');
         register_setting('efms_settings_group', 'efms_remote_base_path');
+        register_setting('efms_settings_group', 'efms_remote_domain');
     }
 
     public function render_settings_page() {
@@ -143,11 +150,32 @@ class External_FTP_Media_Storage {
                         <th scope="row">Remote Base Path</th>
                         <td><input type="text" name="efms_remote_base_path" value="<?php echo esc_attr(get_option('efms_remote_base_path', '/')); ?>" /></td>
                     </tr>
+                    <tr>
+                        <th scope="row">Remote Domain</th>
+                        <td><input type="text" name="efms_remote_domain" value="<?php echo esc_attr(get_option('efms_remote_domain', '')); ?>" placeholder="https://example.com" /></td>
+                    </tr>
                 </table>
                 <?php submit_button(); ?>
             </form>
         </div>
         <?php
+    }
+
+    private function add_admin_notice($message, $type = 'info') {
+        $notices = get_option('efms_admin_notices', array());
+        $notices[] = array(
+            'message' => $message,
+            'type' => $type
+        );
+        update_option('efms_admin_notices', $notices);
+    }
+
+    public function display_admin_notices() {
+        $notices = get_option('efms_admin_notices', array());
+        foreach ($notices as $notice) {
+            echo '<div class="notice notice-' . esc_attr($notice['type']) . ' is-dismissible"><p>' . esc_html($notice['message']) . '</p></div>';
+        }
+        delete_option('efms_admin_notices');
     }
 }
 
