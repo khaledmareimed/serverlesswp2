@@ -32,11 +32,25 @@ function emf_handle_upload($fileinfo, $context) {
         // Enable passive mode
         ftp_pasv($ftp_conn, true);
 
+        // Check if the FTP connection is still alive before proceeding
+        if (!emf_is_ftp_alive($ftp_conn)) {
+            error_log('External Media FTP: FTP connection lost after login.');
+            ftp_close($ftp_conn);
+            return $fileinfo;
+        }
+
         // Define the remote path (use custom directory if set)
         $remote_path = $ftp_directory . 'wp-content/uploads/' . date('Y/m');
 
         // Create remote directories if they don't exist
         emf_ftp_mkdir_recursive($ftp_conn, $remote_path);
+
+        // Check connection again before uploading
+        if (!emf_is_ftp_alive($ftp_conn)) {
+            error_log('External Media FTP: FTP connection lost before file upload.');
+            ftp_close($ftp_conn);
+            return $fileinfo;
+        }
 
         // Define remote file path
         $remote_file = $remote_path . '/' . basename($fileinfo['file']);
@@ -62,6 +76,13 @@ function emf_handle_upload($fileinfo, $context) {
     return $fileinfo;
 }
 
+// Function to check if the FTP connection is still alive
+function emf_is_ftp_alive($ftp_conn) {
+    // Use an FTP command to check if the connection is still alive
+    return @ftp_raw($ftp_conn, 'NOOP') !== false;
+}
+
+// Function to create directories recursively on FTP server
 function emf_ftp_mkdir_recursive($ftp_conn, $remote_dir) {
     $dirs = explode('/', $remote_dir);
     $path = '';
