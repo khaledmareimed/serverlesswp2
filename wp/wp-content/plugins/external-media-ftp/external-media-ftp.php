@@ -1,247 +1,142 @@
 <?php
-/*
-Plugin Name: FTP Media Upload with Settings, CDN, and Notifications
-Description: Uploads media to an external FTP server with configuration in WordPress admin, supports CDN, and shows notifications for success or errors.
-Version: 1.4
-Author: Your Name
-*/
+/**
+ * Plugin Name: External FTP Media Storage
+ * Plugin URI: https://example.com/plugins/external-ftp-media-storage
+ * Description: Store media files on an external server using FTP
+ * Version: 1.0
+ * Author: Your Name
+ * Author URI: https://example.com
+ */
 
+// Exit if accessed directly
 if (!defined('ABSPATH')) {
-    exit; // Exit if accessed directly.
+    exit;
 }
 
-// Hook into the upload process
-add_filter('wp_handle_upload', 'upload_media_to_ftp', 10, 2);
+class External_FTP_Media_Storage {
+    private $ftp_server;
+    private $ftp_username;
+    private $ftp_password;
+    private $ftp_port;
+    private $remote_base_path;
 
-// Add settings page for FTP configuration
-add_action('admin_menu', 'ftp_media_upload_settings_menu');
-add_action('admin_init', 'ftp_media_upload_settings_init');
+    public function __construct() {
+        // Initialize FTP settings
+        $this->ftp_server = get_option('efms_ftp_server', '');
+        $this->ftp_username = get_option('efms_ftp_username', '');
+        $this->ftp_password = get_option('efms_ftp_password', '');
+        $this->ftp_port = get_option('efms_ftp_port', 21);
+        $this->remote_base_path = get_option('efms_remote_base_path', '/');
 
-// Hook for admin notices (for errors or success messages)
-add_action('admin_notices', 'ftp_media_upload_admin_notice');
+        // Hook into WordPress media handling
+        add_filter('wp_handle_upload', array($this, 'handle_ftp_upload'), 10, 2);
+        add_filter('wp_get_attachment_url', array($this, 'get_remote_attachment_url'), 10, 2);
 
-/**
- * Create settings menu in WordPress dashboard.
- */
-function ftp_media_upload_settings_menu() {
-    add_options_page(
-        'FTP Media Upload Settings',
-        'FTP Media Upload',
-        'manage_options',
-        'ftp-media-upload-settings',
-        'ftp_media_upload_settings_page'
-    );
-}
-
-/**
- * Register and initialize the FTP settings.
- */
-function ftp_media_upload_settings_init() {
-    register_setting('ftp_media_upload_settings', 'ftp_media_upload_options');
-
-    add_settings_section(
-        'ftp_media_upload_section',
-        'FTP & CDN Settings',
-        null,
-        'ftp-media-upload-settings'
-    );
-
-    add_settings_field(
-        'ftp_server',
-        'FTP Server',
-        'ftp_server_field_callback',
-        'ftp-media-upload-settings',
-        'ftp_media_upload_section'
-    );
-    
-    add_settings_field(
-        'ftp_user',
-        'FTP Username',
-        'ftp_user_field_callback',
-        'ftp-media-upload-settings',
-        'ftp_media_upload_section'
-    );
-    
-    add_settings_field(
-        'ftp_pass',
-        'FTP Password',
-        'ftp_pass_field_callback',
-        'ftp-media-upload-settings',
-        'ftp_media_upload_section'
-    );
-
-    add_settings_field(
-        'ftp_path',
-        'FTP Path',
-        'ftp_path_field_callback',
-        'ftp-media-upload-settings',
-        'ftp_media_upload_section'
-    );
-
-    add_settings_field(
-        'cdn_url',
-        'CDN Base URL',
-        'cdn_url_field_callback',
-        'ftp-media-upload-settings',
-        'ftp_media_upload_section'
-    );
-}
-
-// Callbacks to display fields
-function ftp_server_field_callback() {
-    $options = get_option('ftp_media_upload_options');
-    echo '<input type="text" name="ftp_media_upload_options[ftp_server]" value="' . esc_attr($options['ftp_server'] ?? '') . '" />';
-}
-
-function ftp_user_field_callback() {
-    $options = get_option('ftp_media_upload_options');
-    echo '<input type="text" name="ftp_media_upload_options[ftp_user]" value="' . esc_attr($options['ftp_user'] ?? '') . '" />';
-}
-
-function ftp_pass_field_callback() {
-    $options = get_option('ftp_media_upload_options');
-    echo '<input type="password" name="ftp_media_upload_options[ftp_pass]" value="' . esc_attr($options['ftp_pass'] ?? '') . '" />';
-}
-
-function ftp_path_field_callback() {
-    $options = get_option('ftp_media_upload_options');
-    echo '<input type="text" name="ftp_media_upload_options[ftp_path]" value="' . esc_attr($options['ftp_path'] ?? '') . '" />';
-}
-
-function cdn_url_field_callback() {
-    $options = get_option('ftp_media_upload_options');
-    echo '<input type="text" name="ftp_media_upload_options[cdn_url]" value="' . esc_attr($options['cdn_url'] ?? '') . '" />';
-}
-
-/**
- * Display the settings page in WordPress dashboard.
- */
-function ftp_media_upload_settings_page() {
-    ?>
-    <div class="wrap">
-        <h1>FTP Media Upload Settings</h1>
-        <form action="options.php" method="post">
-            <?php
-            settings_fields('ftp_media_upload_settings');
-            do_settings_sections('ftp-media-upload-settings');
-            submit_button();
-            ?>
-        </form>
-    </div>
-    <?php
-}
-
-/**
- * Upload media file to an FTP server.
- *
- * @param array $upload Array of upload data.
- * @param string $context Upload context.
- * @return array Modified upload data.
- */
-function upload_media_to_ftp($upload) {
-    $options = get_option('ftp_media_upload_options');
-    $ftp_server = $options['ftp_server'] ?? '';
-    $ftp_user = $options['ftp_user'] ?? '';
-    $ftp_pass = $options['ftp_pass'] ?? '';
-    $ftp_path = $options['ftp_path'] ?? '/';
-    $cdn_url = $options['cdn_url'] ?? ''; // Get CDN base URL
-
-    // Check if FTP extension is available
-    if (!function_exists('ftp_connect')) {
-        set_transient('ftp_upload_status', 'error_ftp_extension', 10);
-        return $upload;
+        // Add settings page
+        add_action('admin_menu', array($this, 'add_settings_page'));
+        add_action('admin_init', array($this, 'register_settings'));
     }
 
-    if (!$ftp_server || !$ftp_user || !$ftp_pass) {
-        set_transient('ftp_upload_status', 'error_invalid_settings', 10);
-        return $upload;
-    }
+    public function handle_ftp_upload($file, $overrides) {
+        // Only handle image uploads
+        if (strpos($file['type'], 'image') === false) {
+            return $file;
+        }
 
-    // Check if the file was uploaded without errors
-    if ($upload['type'] && !empty($upload['file'])) {
-        // File path
-        $file = $upload['file'];
-        $filename = basename($file);
-
-        // Establish FTP connection
-        $ftp_conn = ftp_connect($ftp_server);
+        $ftp_conn = $this->ftp_connect();
         if (!$ftp_conn) {
-            set_transient('ftp_upload_status', 'error_connection', 10);
-            return $upload;
+            return $file;
         }
 
-        // Login to the FTP server
-        $login = ftp_login($ftp_conn, $ftp_user, $ftp_pass);
-        if (!$login) {
-            ftp_close($ftp_conn);
-            set_transient('ftp_upload_status', 'error_login', 10);
-            return $upload;
+        $remote_file = $this->remote_base_path . basename($file['file']);
+        $upload_result = ftp_put($ftp_conn, $remote_file, $file['file'], FTP_BINARY);
+
+        if ($upload_result) {
+            // Update file location to remote URL
+            $file['url'] = $this->get_remote_url($remote_file);
+            // Remove local file
+            unlink($file['file']);
         }
 
-        // Enable passive mode
-        ftp_pasv($ftp_conn, true);
-
-        // Upload the file
-        $upload_result = ftp_put($ftp_conn, $ftp_path . $filename, $file, FTP_BINARY);
-
-        if (!$upload_result) {
-            set_transient('ftp_upload_status', 'error_upload_failed', 10);
-        } else {
-            set_transient('ftp_upload_status', 'success', 10);
-
-            // Use CDN URL if provided, otherwise use FTP URL
-            if ($cdn_url) {
-                $upload['url'] = rtrim($cdn_url, '/') . '/' . $filename;
-            } else {
-                $upload['url'] = $ftp_server . '/' . ltrim($ftp_path, '/') . '/' . $filename;
-            }
-        }
-
-        // Close the connection
         ftp_close($ftp_conn);
+        return $file;
     }
 
-    return $upload;
-}
-
-/**
- * Show admin notices for FTP upload status.
- */
-function ftp_media_upload_admin_notice() {
-    if ($status = get_transient('ftp_upload_status')) {
-        switch ($status) {
-            case 'success':
-                $class = 'notice-success';
-                $message = 'File uploaded successfully to FTP server.';
-                break;
-            case 'error_ftp_extension':
-                $class = 'notice-error';
-                $message = 'Error: FTP extension is not enabled in your PHP configuration.';
-                break;
-            case 'error_invalid_settings':
-                $class = 'notice-error';
-                $message = 'Error: FTP settings are incomplete or incorrect.';
-                break;
-            case 'error_connection':
-                $class = 'notice-error';
-                $message = 'Error: Failed to connect to the FTP server.';
-                break;
-            case 'error_login':
-                $class = 'notice-error';
-                $message = 'Error: FTP login failed.';
-                break;
-            case 'error_upload_failed':
-                $class = 'notice-error';
-                $message = 'Error: FTP upload failed.';
-                break;
-            default:
-                $class = 'notice-error';
-                $message = 'An unknown error occurred during FTP upload.';
+    public function get_remote_attachment_url($url, $post_id) {
+        $file = get_post_meta($post_id, '_wp_attached_file', true);
+        if ($file) {
+            return $this->get_remote_url($this->remote_base_path . $file);
         }
+        return $url;
+    }
 
-        echo "<div class='$class'><p>$message</p></div>";
+    private function ftp_connect() {
+        $ftp_conn = ftp_connect($this->ftp_server, $this->ftp_port);
+        if ($ftp_conn && ftp_login($ftp_conn, $this->ftp_username, $this->ftp_password)) {
+            ftp_pasv($ftp_conn, true);
+            return $ftp_conn;
+        }
+        return false;
+    }
 
-        // Delete the transient so it doesn't show repeatedly
-        delete_transient('ftp_upload_status');
+    private function get_remote_url($path) {
+        // Construct the remote URL based on your setup
+        return 'http://' . $this->ftp_server . '/' . ltrim($path, '/');
+    }
+
+    public function add_settings_page() {
+        add_options_page(
+            'External FTP Media Storage Settings',
+            'External FTP Media',
+            'manage_options',
+            'external-ftp-media-storage',
+            array($this, 'render_settings_page')
+        );
+    }
+
+    public function register_settings() {
+        register_setting('efms_settings_group', 'efms_ftp_server');
+        register_setting('efms_settings_group', 'efms_ftp_username');
+        register_setting('efms_settings_group', 'efms_ftp_password');
+        register_setting('efms_settings_group', 'efms_ftp_port');
+        register_setting('efms_settings_group', 'efms_remote_base_path');
+    }
+
+    public function render_settings_page() {
+        ?>
+        <div class="wrap">
+            <h2>External FTP Media Storage Settings</h2>
+            <form method="post" action="options.php">
+                <?php settings_fields('efms_settings_group'); ?>
+                <?php do_settings_sections('efms_settings_group'); ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">FTP Server</th>
+                        <td><input type="text" name="efms_ftp_server" value="<?php echo esc_attr(get_option('efms_ftp_server')); ?>" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">FTP Username</th>
+                        <td><input type="text" name="efms_ftp_username" value="<?php echo esc_attr(get_option('efms_ftp_username')); ?>" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">FTP Password</th>
+                        <td><input type="password" name="efms_ftp_password" value="<?php echo esc_attr(get_option('efms_ftp_password')); ?>" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">FTP Port</th>
+                        <td><input type="number" name="efms_ftp_port" value="<?php echo esc_attr(get_option('efms_ftp_port', 21)); ?>" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Remote Base Path</th>
+                        <td><input type="text" name="efms_remote_base_path" value="<?php echo esc_attr(get_option('efms_remote_base_path', '/')); ?>" /></td>
+                    </tr>
+                </table>
+                <?php submit_button(); ?>
+            </form>
+        </div>
+        <?php
     }
 }
+
+// Initialize the plugin
+new External_FTP_Media_Storage();
