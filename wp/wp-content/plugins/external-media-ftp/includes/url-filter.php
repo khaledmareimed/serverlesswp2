@@ -6,22 +6,23 @@ add_filter('wp_get_attachment_image_src', 'emf_filter_attachment_image_src', 10,
 
 function emf_filter_attachment_url($url, $post_id) {
     // Get the attachment's upload directory
-        $upload_dir = wp_get_upload_dir();
+    $upload_dir = wp_get_upload_dir();
 
-            // Get base URL of external server
-                $base_url = rtrim(get_option('emf_ftp_base_url'), '/');
+    // Get base URL of external server and custom directory
+    $base_url = rtrim(get_option('emf_ftp_base_url'), '/');
+    $ftp_directory = rtrim(get_option('emf_ftp_directory'), '/') . '/';
 
-                    // Replace the upload base URL with the external server base URL
-                        if (strpos($url, $upload_dir['baseurl']) !== false) {
-                                $url = str_replace($upload_dir['baseurl'], $base_url, $url);
-                                    }
+    // Replace the upload base URL with the external server base URL
+    if (strpos($url, $upload_dir['baseurl']) !== false) {
+        $url = str_replace($upload_dir['baseurl'], $base_url . $ftp_directory, $url);
+    }
 
-                                        return $url;
-                                        }
+    return $url;
+}
 
-                                        function emf_filter_attachment_image_src($image, $attachment_id, $size, $icon) {
-                                            if (is_array($image)) {
-                                                    $image[0] = emf_filter_attachment_url($image[0], $attachment_id);
-                                                        }
-                                                            return $image;
-                                                            }
+function emf_filter_attachment_image_src($image, $attachment_id, $size, $icon) {
+    if (is_array($image)) {
+        $image[0] = emf_filter_attachment_url($image[0], $attachment_id);
+    }
+    return $image;
+}
