@@ -3,7 +3,7 @@
 Plugin Name: PostImages Integration
 Plugin URI: https://yourwebsite.com/postimages-integration
 Description: Integrates WordPress media uploads with postImages.org for external image hosting.
-Version: 1.0
+Version: 1.1
 Author: Your Name
 Author URI: https://yourwebsite.com
 License: GPL2
@@ -148,26 +148,30 @@ class PostImages_Integration {
         $file_data = file_get_contents( $file_path );
         if ( false === $file_data ) {
             $upload['error'] = 'PostImages Integration: Failed to read the uploaded file.';
+            error_log( 'PostImages Integration: Failed to read the uploaded file at ' . $file_path );
             return $upload;
         }
 
         // Prepare the API request
         $response = wp_remote_post( 'https://api.postimages.org/1/upload', array(
             'body' => array(
-                'key' => $api_key,
-                'image' => base64_encode( $file_data ),
+                'key'    => $api_key,
+                'image'  => base64_encode( $file_data ),
                 'format' => 'json',
             ),
             'timeout' => 60,
         ) );
 
         if ( is_wp_error( $response ) ) {
+            // Log the error for debugging
+            error_log( 'PostImages Integration: API request failed. ' . $response->get_error_message() );
             $upload['error'] = 'PostImages Integration: API request failed. ' . $response->get_error_message();
             return $upload;
         }
 
         $response_code = wp_remote_retrieve_response_code( $response );
         if ( 200 !== $response_code ) {
+            error_log( 'PostImages Integration: API returned unexpected response code: ' . $response_code );
             $upload['error'] = 'PostImages Integration: API returned an unexpected response code: ' . $response_code;
             return $upload;
         }
@@ -176,17 +180,20 @@ class PostImages_Integration {
         $data = json_decode( $body, true );
 
         if ( json_last_error() !== JSON_ERROR_NONE ) {
+            error_log( 'PostImages Integration: Failed to parse API response. JSON Error: ' . json_last_error_msg() );
             $upload['error'] = 'PostImages Integration: Failed to parse API response.';
             return $upload;
         }
 
         if ( isset( $data['status'] ) && $data['status'] !== 'success' ) {
             $message = isset( $data['error'] ) ? $data['error'] : 'Unknown error.';
+            error_log( 'PostImages Integration: API error - ' . $message );
             $upload['error'] = 'PostImages Integration: API error - ' . $message;
             return $upload;
         }
 
         if ( ! isset( $data['image']['url'] ) ) {
+            error_log( 'PostImages Integration: API response does not contain image URL.' );
             $upload['error'] = 'PostImages Integration: API response does not contain image URL.';
             return $upload;
         }
@@ -195,16 +202,18 @@ class PostImages_Integration {
         $hosted_url = esc_url_raw( $data['image']['url'] );
 
         // Update the upload array to use the hosted URL
-        $upload['url'] = $hosted_url;
+        $upload['url']  = $hosted_url;
         $upload['file'] = $hosted_url;
         $upload['type'] = $upload['type']; // Keep the MIME type
 
-        // Optionally, you can customize the file name here based on API response
-        // For example, if the API returns a unique identifier
+        // Optionally, customize the file name based on API response
         if ( isset( $data['image']['shorturl'] ) ) {
-            $unique_id = sanitize_title( $data['image']['shorturl'] );
-            $upload['name'] = $unique_id . '.' . pathinfo( $file_name, PATHINFO_EXTENSION );
+            $unique_id        = sanitize_title( $data['image']['shorturl'] );
+            $upload['name']   = $unique_id . '.' . pathinfo( $file_name, PATHINFO_EXTENSION );
         }
+
+        // Save the hosted URL as post meta for future reference
+        add_post_meta( $upload['id'], '_pi_hosted_url', $hosted_url, true );
 
         return $upload;
     }
