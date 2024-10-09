@@ -17,7 +17,7 @@ function emf_handle_upload($fileinfo, $context) {
         // Establish FTP connection
         $ftp_conn = ftp_connect($ftp_host, $ftp_port, 30);
         if (!$ftp_conn) {
-            error_log('External Media FTP: Could not connect to FTP server.');
+            wp_die('External Media FTP: Could not connect to FTP server.');
             return $fileinfo;
         }
 
@@ -25,7 +25,7 @@ function emf_handle_upload($fileinfo, $context) {
         $login = ftp_login($ftp_conn, $ftp_username, $ftp_password);
         if (!$login) {
             ftp_close($ftp_conn);
-            error_log('External Media FTP: Could not login to FTP server.');
+            wp_die('External Media FTP: Could not login to FTP server.');
             return $fileinfo;
         }
 
@@ -34,7 +34,7 @@ function emf_handle_upload($fileinfo, $context) {
 
         // Check if the FTP connection is still alive before proceeding
         if (!emf_is_ftp_alive($ftp_conn)) {
-            error_log('External Media FTP: FTP connection lost after login.');
+            wp_die('External Media FTP: FTP connection lost after login.');
             ftp_close($ftp_conn);
             return $fileinfo;
         }
@@ -47,7 +47,7 @@ function emf_handle_upload($fileinfo, $context) {
 
         // Check connection again before uploading
         if (!emf_is_ftp_alive($ftp_conn)) {
-            error_log('External Media FTP: FTP connection lost before file upload.');
+            wp_die('External Media FTP: FTP connection lost before file upload.');
             ftp_close($ftp_conn);
             return $fileinfo;
         }
@@ -58,7 +58,7 @@ function emf_handle_upload($fileinfo, $context) {
         // Upload the file
         $upload = ftp_put($ftp_conn, $remote_file, $fileinfo['file'], FTP_BINARY);
         if (!$upload) {
-            error_log('External Media FTP: Failed to upload file to FTP server.');
+            wp_die('External Media FTP: Failed to upload file to FTP server.');
             ftp_close($ftp_conn);
             return $fileinfo;
         }
@@ -93,7 +93,7 @@ function emf_ftp_mkdir_recursive($ftp_conn, $remote_dir) {
             continue;
         }
         if (!@ftp_mkdir($ftp_conn, $path)) {
-            error_log("External Media FTP: Failed to create directory {$path}");
+            wp_die("External Media FTP: Failed to create directory {$path}");
             return false;
         }
     }
