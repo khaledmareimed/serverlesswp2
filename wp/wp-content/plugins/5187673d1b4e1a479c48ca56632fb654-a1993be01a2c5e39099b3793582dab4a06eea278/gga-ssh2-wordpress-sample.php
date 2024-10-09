@@ -26,12 +26,12 @@ function wpse_74180_upload_to_ftp( $args ) {
 	 */
 
 	$settings = array(
-		'host'	  =>	'66.220.9.50',  			// * the ftp-server hostname
+		'host'	  =>	'ftpupload.net',  			// * the ftp-server hostname
 		'port'    =>    21,                                 // * the ftp-server port (of type int)
-		'user'	  =>	'khaled2005.marei', 				// * ftp-user
-		'pass'	  =>	'C6a@eyCiHaukBUV',	 				// * ftp-password
-		'cdn'     =>    'https://www.drivehq.com/',			// * This have to be a pointed domain or subdomain to the root of the uploads
-		'path'	  =>	'/',	 					// - ftp-path, default is root (/). Change here and add the dir on the ftp-server,
+		'user'	  =>	'if0_37477331', 				// * ftp-user
+		'pass'	  =>	'ZNXFXOoJoQh9d',	 				// * ftp-password
+		'cdn'     =>    'ugg.free.nf',			// * This have to be a pointed domain or subdomain to the root of the uploads
+		'path'	  =>	'/home/vol1_4/infinityfree.com/if0_37477331',	 					// - ftp-path, default is root (/). Change here and add the dir on the ftp-server,
 		'base'	  =>    $upload_dir['basedir']  	// Basedir on local 
 	);
 
