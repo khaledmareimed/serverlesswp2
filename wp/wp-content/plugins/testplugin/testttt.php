@@ -97,7 +97,10 @@ function imgbb_uploader_ajax() {
         $attach_id = wp_insert_attachment( $attachment, $url );
         require_once( ABSPATH . 'wp-admin/includes/image.php' );
         
-        // Generate attachment metadata, but don't try to regenerate URLs
+        // Manually set the file URL to the ImgBB URL in the meta
+        update_post_meta( $attach_id, '_wp_attached_file', $url );
+
+        // Generate attachment metadata, without trying to regenerate URLs
         $attach_data = wp_generate_attachment_metadata( $attach_id, $url );
         wp_update_attachment_metadata( $attach_id, $attach_data );
 
