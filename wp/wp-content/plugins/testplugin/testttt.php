@@ -2,7 +2,7 @@
 /*
 Plugin Name: ImgBB Uploader
 Description: Upload images to ImgBB and display them in the WordPress media library.
-Version: 1.0
+Version: 1.1
 Author: Your Name
 */
 
@@ -51,9 +51,6 @@ function imgbb_uploader_settings() {
 add_action('admin_enqueue_scripts', 'imgbb_uploader_enqueue_scripts');
 
 function imgbb_uploader_enqueue_scripts($hook) {
-    if ($hook != 'media_page_imgbb-uploader') {
-        return;
-    }
     wp_enqueue_media();
     wp_enqueue_script('imgbb-uploader-script', plugin_dir_url(__FILE__) . 'imgbb-uploader.js', array('jquery'), null, true);
 }
@@ -111,8 +108,7 @@ function imgbb_uploader_inline_script() {
                 },
                 success: function (response) {
                     if (response.success) {
-                        alert('Image uploaded successfully: ' + response.data.url);
-                        // Here you could also add the image to the media library if needed
+                        addImageToMediaLibrary(response.data.url);
                     } else {
                         alert('Upload failed: ' + response.error.message);
                     }
@@ -122,7 +118,82 @@ function imgbb_uploader_inline_script() {
                 }
             });
         }
+
+        function addImageToMediaLibrary(imgUrl) {
+            var data = {
+                action: 'imgbb_add_image',
+                img_url: imgUrl,
+                _ajax_nonce: '<?php echo wp_create_nonce("imgbb_nonce"); ?>'
+            };
+
+            $.post(ajaxurl, data, function (response) {
+                if (response.success) {
+                    alert('Image added to Media Library successfully!');
+                } else {
+                    alert('Error adding image to Media Library: ' + response.data);
+                }
+            });
+        }
     });
     </script>
     <?php
+}
+
+// AJAX handler to add the image to the media library
+add_action('wp_ajax_imgbb_add_image', 'imgbb_add_image_to_media_library');
+
+function imgbb_add_image_to_media_library() {
+    check_ajax_referer('imgbb_nonce', '_ajax_nonce');
+
+    if (!current_user_can('upload_files')) {
+        wp_send_json_error('Permission denied.');
+        return;
+    }
+
+    $img_url = esc_url_raw($_POST['img_url']);
+
+    // Prepare the file for upload
+    $response = wp_remote_get($img_url);
+    if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+        wp_send_json_error('Failed to fetch image from ImgBB.');
+        return;
+    }
+
+    // Upload the image to WordPress
+    $image_data = $response['body'];
+    $filename = basename($img_url);
+
+    // Set upload directory
+    $upload_dir = wp_upload_dir();
+    $file_path = $upload_dir['path'] . '/' . $filename;
+
+    // Check if file already exists
+    if (file_exists($file_path)) {
+        wp_send_json_error('File already exists.');
+        return;
+    }
+
+    // Create the file on the server
+    file_put_contents($file_path, $image_data);
+
+    // Prepare attachment
+    $attachment = array(
+        'guid' => $upload_dir['url'] . '/' . basename($file_path),
+        'post_mime_type' => 'image/jpeg',
+        'post_title' => sanitize_file_name($filename),
+        'post_content' => '',
+        'post_status' => 'inherit'
+    );
+
+    // Insert attachment to the database
+    $attach_id = wp_insert_attachment($attachment, $file_path);
+
+    // Include image.php for further processing
+    require_once(ABSPATH . 'wp-admin/includes/image.php');
+
+    // Generate metadata and update the database
+    $attach_data = wp_generate_attachment_metadata($attach_id, $file_path);
+    wp_update_attachment_metadata($attach_id, $attach_data);
+
+    wp_send_json_success('Image added to Media Library.');
 }
