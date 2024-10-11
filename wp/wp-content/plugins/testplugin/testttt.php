@@ -3,7 +3,7 @@
  * Plugin Name: ImgBB Uploader
  * Description: Upload images to ImgBB and save them in the WordPress Media Library with the ImgBB URL.
  * Version: 1.0
- * Author: khaled
+ * Author: Your Name
  */
 
 // Enqueue admin styles and scripts
@@ -81,21 +81,27 @@ function imgbb_uploader_ajax() {
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
 
     if ( isset( $body['data']['url'] ) ) {
-        // Add image to WordPress media library with the ImgBB URL
+        // ImgBB image URL
         $url = $body['data']['url'];
+        
+        // Add image to WordPress media library with the ImgBB URL
         $attachment = array(
-            'guid'           => $url, 
+            'guid'           => $url, // Use the ImgBB URL here
             'post_mime_type' => $image['type'],
             'post_title'     => sanitize_file_name( $image['name'] ),
             'post_content'   => '',
             'post_status'    => 'inherit'
         );
 
+        // Insert attachment using ImgBB URL
         $attach_id = wp_insert_attachment( $attachment, $url );
         require_once( ABSPATH . 'wp-admin/includes/image.php' );
+        
+        // Generate attachment metadata, but don't try to regenerate URLs
         $attach_data = wp_generate_attachment_metadata( $attach_id, $url );
         wp_update_attachment_metadata( $attach_id, $attach_data );
 
+        // Return success with the correct URL
         wp_send_json_success( [ 'url' => $url, 'attachment_id' => $attach_id ] );
     } else {
         wp_send_json_error( 'ImgBB upload failed.' );
