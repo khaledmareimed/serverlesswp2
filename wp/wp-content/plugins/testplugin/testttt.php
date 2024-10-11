@@ -1,178 +1,130 @@
 <?php
 /**
  * Plugin Name: ImgBB Uploader
- * Plugin URI: https://example.com/imgbb-uploader
- * Description: Upload images to ImgBB and integrate them into the WordPress media library.
- * Version: 1.1
- * Author: Your Name
- * Author URI: https://example.com
+ * Description: Upload images to ImgBB and save them in the WordPress Media Library with the ImgBB URL.
+ * Version: 1.0
+ * Author: khaled
  */
 
-// Add settings page
-function imgbb_uploader_menu() {
-    add_options_page('ImgBB Uploader Settings', 'ImgBB Uploader', 'manage_options', 'imgbb-uploader', 'imgbb_uploader_settings_page');
+// Enqueue admin styles and scripts
+function imgbb_uploader_enqueue() {
+    wp_enqueue_style( 'imgbb_uploader_css', plugins_url( '/css/style.css', __FILE__ ) );
 }
-add_action('admin_menu', 'imgbb_uploader_menu');
+add_action( 'admin_enqueue_scripts', 'imgbb_uploader_enqueue' );
+
+// Create settings page for the API key
+function imgbb_uploader_menu() {
+    add_menu_page( 'ImgBB Uploader Settings', 'ImgBB Uploader', 'manage_options', 'imgbb-uploader', 'imgbb_uploader_settings_page', 'dashicons-upload', 110 );
+}
+add_action( 'admin_menu', 'imgbb_uploader_menu' );
 
 // Settings page content
 function imgbb_uploader_settings_page() {
+    if ( isset( $_POST['imgbb_api_key'] ) ) {
+        update_option( 'imgbb_api_key', sanitize_text_field( $_POST['imgbb_api_key'] ) );
+        echo '<div class="notice notice-success is-dismissible"><p>API Key saved successfully.</p></div>';
+    }
+
+    $imgbb_api_key = get_option( 'imgbb_api_key', '' );
     ?>
-    <div class="wrap imgbb-uploader-wrap">
+    <div class="wrap">
         <h1>ImgBB Uploader Settings</h1>
-        <form method="post" action="options.php">
-            <?php
-            settings_fields('imgbb_uploader_settings');
-            do_settings_sections('imgbb_uploader_settings');
-            submit_button();
-            ?>
+        <form method="POST">
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="imgbb_api_key">ImgBB API Key</label></th>
+                    <td><input type="text" id="imgbb_api_key" name="imgbb_api_key" value="<?php echo esc_attr( $imgbb_api_key ); ?>" class="regular-text" /></td>
+                </tr>
+            </table>
+            <p class="submit">
+                <button type="submit" class="button button-primary">Save API Key</button>
+            </p>
         </form>
     </div>
     <?php
 }
 
-// Register settings
-function imgbb_uploader_settings() {
-    register_setting('imgbb_uploader_settings', 'imgbb_api_key');
-    add_settings_section('imgbb_uploader_main', 'Main Settings', null, 'imgbb_uploader_settings');
-    add_settings_field('imgbb_api_key', 'ImgBB API Key', 'imgbb_api_key_callback', 'imgbb_uploader_settings', 'imgbb_uploader_main');
+// Add a custom image uploader button to the Media Library
+function imgbb_uploader_media_button() {
+    echo '<button id="imgbb-upload-btn" class="button">Upload via ImgBB</button>';
 }
-add_action('admin_init', 'imgbb_uploader_settings');
+add_action( 'media_buttons', 'imgbb_uploader_media_button', 20 );
 
-// API Key field callback
-function imgbb_api_key_callback() {
-    $api_key = get_option('imgbb_api_key');
-    echo "<input type='text' name='imgbb_api_key' value='$api_key' class='regular-text'>";
-}
+// Handle ImgBB image upload via AJAX
+function imgbb_uploader_ajax() {
+    $imgbb_api_key = get_option( 'imgbb_api_key' );
 
-// Enqueue admin styles
-function imgbb_uploader_admin_styles() {
-    wp_add_inline_style('admin-menu', imgbb_uploader_get_admin_styles());
-}
-add_action('admin_enqueue_scripts', 'imgbb_uploader_admin_styles');
-
-// Admin styles
-function imgbb_uploader_get_admin_styles() {
-    return "
-    .imgbb-uploader-wrap {
-        max-width: 800px;
-        margin: 20px auto;
-        background: #fff;
-        padding: 30px;
-        border-radius: 8px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    }
-    .imgbb-uploader-wrap h1 {
-        color: #23282d;
-        font-size: 24px;
-        margin-bottom: 20px;
-    }
-    .imgbb-uploader-wrap form {
-        margin-top: 20px;
-    }
-    .imgbb-uploader-wrap .form-table th {
-        font-weight: 600;
-        padding: 20px 10px 20px 0;
-    }
-    .imgbb-uploader-wrap .form-table td {
-        padding: 15px 10px;
-    }
-    .imgbb-uploader-wrap input[type='text'] {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-    }
-    .imgbb-uploader-wrap .submit {
-        margin-top: 20px;
-    }
-    .imgbb-uploader-wrap .button-primary {
-        background: #0073aa;
-        border-color: #0073aa;
-        color: #fff;
-        text-decoration: none;
-        text-shadow: none;
-        padding: 8px 15px;
-        border-radius: 4px;
-        font-size: 14px;
-        cursor: pointer;
-        transition: background 0.3s ease;
-    }
-    .imgbb-uploader-wrap .button-primary:hover {
-        background: #005177;
-    }
-    ";
-}
-
-// Hook into WordPress upload process
-function imgbb_upload_handler($file) {
-    $api_key = get_option('imgbb_api_key');
-    if (empty($api_key)) {
-        return $file;
+    if ( ! $imgbb_api_key ) {
+        wp_send_json_error( 'ImgBB API key not set.' );
+        return;
     }
 
-    // Check if this is a valid file upload
-    if (!isset($file['tmp_name']) || empty($file['tmp_name'])) {
-        return $file;
+    if ( ! isset( $_FILES['image'] ) ) {
+        wp_send_json_error( 'No image provided.' );
+        return;
     }
 
-    // Ensure the file exists and is readable
-    if (!file_exists($file['tmp_name']) || !is_readable($file['tmp_name'])) {
-        return $file;
+    $image = $_FILES['image'];
+
+    // Upload the image to ImgBB
+    $response = wp_remote_post( 'https://api.imgbb.com/1/upload?key=' . $imgbb_api_key, [
+        'body' => [
+            'image' => base64_encode( file_get_contents( $image['tmp_name'] ) ),
+        ],
+    ] );
+
+    if ( is_wp_error( $response ) ) {
+        wp_send_json_error( 'Error uploading image to ImgBB.' );
+        return;
     }
 
-    $imgbb_url = 'https://api.imgbb.com/1/upload';
-    $image_data = file_get_contents($file['tmp_name']);
-    
-    if ($image_data === false) {
-        // Log error or handle the failure to read the file
-        error_log('ImgBB Uploader: Failed to read the uploaded file.');
-        return $file;
-    }
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
 
-    $payload = array(
-        'key' => $api_key,
-        'image' => base64_encode($image_data)
-    );
-
-    $response = wp_remote_post($imgbb_url, array(
-        'body' => $payload,
-    ));
-
-    if (is_wp_error($response)) {
-        // Log error or handle the API request failure
-        error_log('ImgBB Uploader: Failed to upload image to ImgBB.');
-        return $file;
-    }
-
-    $body = json_decode(wp_remote_retrieve_body($response), true);
-
-    if (isset($body['data']['url'])) {
-        $file['url'] = $body['data']['url'];
-        $file['type'] = $body['data']['mime'];
-    }
-
-    return $file;
-}
-add_filter('wp_handle_upload', 'imgbb_upload_handler');
-
-// Modify attachment metadata to use ImgBB URL
-function imgbb_update_attachment_metadata($metadata, $attachment_id) {
-    $file = get_attached_file($attachment_id);
-    $imgbb_url = get_post_meta($attachment_id, '_wp_attached_file', true);
-
-    if (strpos($imgbb_url, 'https://i.ibb.co/') === 0) {
-        update_post_meta($attachment_id, '_wp_attached_file', $imgbb_url);
-        $metadata['file'] = $imgbb_url;
-        $metadata['sizes'] = array(
-            'full' => array(
-                'file' => basename($imgbb_url),
-                'width' => $metadata['width'],
-                'height' => $metadata['height'],
-                'mime-type' => $metadata['mime_type']
-            )
+    if ( isset( $body['data']['url'] ) ) {
+        // Add image to WordPress media library with the ImgBB URL
+        $url = $body['data']['url'];
+        $attachment = array(
+            'guid'           => $url, 
+            'post_mime_type' => $image['type'],
+            'post_title'     => sanitize_file_name( $image['name'] ),
+            'post_content'   => '',
+            'post_status'    => 'inherit'
         );
-    }
 
-    return $metadata;
+        $attach_id = wp_insert_attachment( $attachment, $url );
+        require_once( ABSPATH . 'wp-admin/includes/image.php' );
+        $attach_data = wp_generate_attachment_metadata( $attach_id, $url );
+        wp_update_attachment_metadata( $attach_id, $attach_data );
+
+        wp_send_json_success( [ 'url' => $url, 'attachment_id' => $attach_id ] );
+    } else {
+        wp_send_json_error( 'ImgBB upload failed.' );
+    }
 }
-add_filter('wp_generate_attachment_metadata', 'imgbb_update_attachment_metadata', 10, 2);
+add_action( 'wp_ajax_imgbb_uploader', 'imgbb_uploader_ajax' );
+
+// Admin page CSS styling
+function imgbb_uploader_admin_styles() {
+    ?>
+    <style>
+        .wrap h1 {
+            font-size: 26px;
+            margin-bottom: 20px;
+        }
+        .wrap form {
+            background: #fff;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+        }
+        .wrap table.form-table th {
+            padding: 10px 20px;
+            width: 250px;
+        }
+        .wrap table.form-table td {
+            padding: 10px 20px;
+        }
+    </style>
+    <?php
+}
+add_action( 'admin_head', 'imgbb_uploader_admin_styles' );
