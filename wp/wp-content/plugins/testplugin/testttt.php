@@ -3,7 +3,7 @@
  * Plugin Name: ImgBB Uploader
  * Plugin URI: https://example.com/imgbb-uploader
  * Description: Upload images to ImgBB and integrate them into the WordPress media library.
- * Version: 1.0
+ * Version: 1.1
  * Author: Your Name
  * Author URI: https://example.com
  */
@@ -110,9 +110,25 @@ function imgbb_upload_handler($file) {
         return $file;
     }
 
+    // Check if this is a valid file upload
+    if (!isset($file['tmp_name']) || empty($file['tmp_name'])) {
+        return $file;
+    }
+
+    // Ensure the file exists and is readable
+    if (!file_exists($file['tmp_name']) || !is_readable($file['tmp_name'])) {
+        return $file;
+    }
+
     $imgbb_url = 'https://api.imgbb.com/1/upload';
     $image_data = file_get_contents($file['tmp_name']);
     
+    if ($image_data === false) {
+        // Log error or handle the failure to read the file
+        error_log('ImgBB Uploader: Failed to read the uploaded file.');
+        return $file;
+    }
+
     $payload = array(
         'key' => $api_key,
         'image' => base64_encode($image_data)
@@ -123,6 +139,8 @@ function imgbb_upload_handler($file) {
     ));
 
     if (is_wp_error($response)) {
+        // Log error or handle the API request failure
+        error_log('ImgBB Uploader: Failed to upload image to ImgBB.');
         return $file;
     }
 
