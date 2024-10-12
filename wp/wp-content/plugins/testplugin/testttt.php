@@ -3,7 +3,7 @@
  * Plugin Name: ImgBB Integration Pro
  * Plugin URI: https://yourwebsite.com/imgbb-integration-pro
  * Description: Professional WordPress plugin for ImgBB integration with advanced features and security.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Your Name
  * Author URI: https://yourwebsite.com
  * License: GPL-2.0+
@@ -17,7 +17,7 @@ if (!defined('WPINC')) {
     die;
 }
 
-define('IMGBB_INTEGRATION_PRO_VERSION', '1.0.0');
+define('IMGBB_INTEGRATION_PRO_VERSION', '1.0.1');
 
 class ImgBB_Integration_Pro {
     private static $instance = null;
@@ -28,7 +28,6 @@ class ImgBB_Integration_Pro {
         $this->plugin_name = 'imgbb-integration-pro';
         $this->version = IMGBB_INTEGRATION_PRO_VERSION;
 
-        $this->load_dependencies();
         $this->set_locale();
         $this->define_admin_hooks();
         $this->define_public_hooks();
@@ -39,10 +38,6 @@ class ImgBB_Integration_Pro {
             self::$instance = new self();
         }
         return self::$instance;
-    }
-
-    private function load_dependencies() {
-        // No external dependencies in this single-file version
     }
 
     private function set_locale() {
@@ -71,11 +66,20 @@ class ImgBB_Integration_Pro {
     }
 
     public function enqueue_admin_styles() {
-        wp_enqueue_style($this->plugin_name, plugin_dir_url(__FILE__) . 'css/imgbb-integration-pro-admin.css', array(), $this->version, 'all');
+        // Inline styles for simplicity. You can create a separate CSS file if preferred.
+        wp_add_inline_style($this->plugin_name, '
+            .imgbb-integration-pro-admin { padding: 20px; }
+            .imgbb-integration-pro-admin h2 { color: #23282d; }
+        ');
     }
 
     public function enqueue_admin_scripts() {
-        wp_enqueue_script($this->plugin_name, plugin_dir_url(__FILE__) . 'js/imgbb-integration-pro-admin.js', array('jquery'), $this->version, false);
+        // Inline script for simplicity. You can create a separate JS file if preferred.
+        wp_add_inline_script($this->plugin_name, '
+            jQuery(document).ready(function($) {
+                // Your custom JavaScript here
+            });
+        ');
     }
 
     public function add_plugin_admin_menu() {
@@ -89,7 +93,18 @@ class ImgBB_Integration_Pro {
     }
 
     public function display_plugin_setup_page() {
-        include_once 'partials/imgbb-integration-pro-admin-display.php';
+        ?>
+        <div class="wrap imgbb-integration-pro-admin">
+            <h2>ImgBB Integration Settings</h2>
+            <form method="post" action="options.php">
+                <?php
+                settings_fields('imgbb_integration_pro_general_settings');
+                do_settings_sections('imgbb_integration_pro_general_settings');
+                submit_button();
+                ?>
+            </form>
+        </div>
+        <?php
     }
 
     public function register_and_build_fields() {
@@ -197,19 +212,3 @@ function run_imgbb_integration_pro() {
     $plugin = ImgBB_Integration_Pro::get_instance();
 }
 run_imgbb_integration_pro();
-
-// Admin display partial
-function imgbb_integration_pro_admin_display() {
-    ?>
-    <div class="wrap">
-        <h2>ImgBB Integration Settings</h2>
-        <form method="post" action="options.php">
-            <?php
-            settings_fields('imgbb_integration_pro_general_settings');
-            do_settings_sections('imgbb_integration_pro_general_settings');
-            submit_button();
-            ?>
-        </form>
-    </div>
-    <?php
-}
