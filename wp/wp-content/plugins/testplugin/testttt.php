@@ -98,6 +98,9 @@ function imgbb_upload_image_to_imgbb($upload) {
         // Replace the local file URL with the Imgbb URL
         $upload['url'] = $imgbb_url;
 
+        // Update the file URL in the database
+        imgbb_update_image_url_in_database($upload['file'], $imgbb_url);
+
         // Optional: Delete the local file to save space
         if (file_exists($file)) {
             unlink($file);
@@ -105,4 +108,36 @@ function imgbb_upload_image_to_imgbb($upload) {
     }
 
     return $upload;
+}
+
+/**
+ * Update the URL of the uploaded image in the WordPress database
+ *
+ * @param string $local_file_path
+ * @param string $imgbb_url
+ */
+function imgbb_update_image_url_in_database($local_file_path, $imgbb_url) {
+    global $wpdb;
+
+    // Get the attachment ID by file path
+    $attachment_id = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT ID FROM $wpdb->posts WHERE guid LIKE %s AND post_type = 'attachment'",
+            '%' . $wpdb->esc_like(basename($local_file_path)) . '%'
+        )
+    );
+
+    if ($attachment_id) {
+        // Update the post's guid (URL) in the wp_posts table
+        $wpdb->update(
+            $wpdb->posts,
+            ['guid' => $imgbb_url],
+            ['ID' => $attachment_id],
+            ['%s'],
+            ['%d']
+        );
+
+        // Optional: Update meta fields like '_wp_attached_file' if needed
+        update_post_meta($attachment_id, '_wp_attached_file', $imgbb_url);
+    }
 }
